@@ -1,0 +1,6 @@
+interface:
+  display_name: "R&D 사업계획서 사전검토"
+  short_description: "평가위원 관점으로 핵심 리스크와 교정문안을 우선순위별 검토"
+  default_prompt: "$bizplan-review를 사용해 최신 사업계획서를 평가위원 관점으로 검토하고 우선순위별 교정문안을 제시해줘."
+policy:
+  allow_implicit_invocation: true

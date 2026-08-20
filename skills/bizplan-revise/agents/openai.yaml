@@ -1,0 +1,6 @@
+interface:
+  display_name: "R&D 사업계획서 의견반영"
+  short_description: "검토의견을 반영해 수정본과 전역 정합성·변경이력을 갱신"
+  default_prompt: "$bizplan-revise를 사용해 검토의견을 원인별로 반영하고 수정본과 반영 대장을 만들어줘."
+policy:
+  allow_implicit_invocation: true

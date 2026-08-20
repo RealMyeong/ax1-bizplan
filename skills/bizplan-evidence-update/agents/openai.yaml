@@ -1,0 +1,6 @@
+interface:
+  display_name: "사업계획서 근거 업데이트"
+  short_description: "새 평가자료를 근거 레지스터와 사업별 검토 규칙에 안전하게 반영"
+  default_prompt: "$bizplan-evidence-update를 사용해 새 평가자료를 분류하고 근거 레지스터와 관련 스킬을 업데이트해줘."
+policy:
+  allow_implicit_invocation: true

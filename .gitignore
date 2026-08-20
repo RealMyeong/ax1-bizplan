@@ -1,0 +1,27 @@
+# Generated releases and caches
+/dist/
+/tmp/
+/installable-zips/
+__pycache__/
+*.py[cod]
+
+# Local settings and credentials
+.env
+.env.*
+*.pem
+*.key
+
+# Raw or working project material must stay outside this repository
+/private/
+/inbox/
+/workspaces/
+/*.hwp
+/*.hwpx
+/*.docx
+/*.pdf
+/*.pptx
+/*.xlsx
+
+# Operating system files
+.DS_Store
+Thumbs.db

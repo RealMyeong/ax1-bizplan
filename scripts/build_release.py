@@ -19,9 +19,12 @@ sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
 VERSION_FILE = ROOT / "VERSION"
 SUITE_VERSION = VERSION_FILE.read_text(encoding="utf-8").strip()
+CHANGELOG_FILE = ROOT / "CHANGELOG.md"
 SKILLS_ROOT = ROOT / "skills"
 DIST_ROOT = ROOT / "dist"
 PLUGIN_NAME = "ax1-bizplan"
+REPOSITORY_URL = "https://github.com/RealMyeong/ax1-bizplan"
+FEEDBACK_FORM_URL = "https://forms.gle/GG6GYrgboA4pnkVE6"
 FORBIDDEN_ARTIFACT_SUFFIXES = {
     ".hwp",
     ".hwpx",
@@ -238,10 +241,76 @@ def write_checksums() -> None:
     (DIST_ROOT / "SHA256SUMS.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def changelog_section(version: str) -> str:
+    text = CHANGELOG_FILE.read_text(encoding="utf-8")
+    headings = list(re.finditer(
+        rf"^##\s+v{re.escape(version)}(?=\s|$).*?$",
+        text,
+        flags=re.MULTILINE,
+    ))
+    if not headings:
+        raise ValueError(f"CHANGELOG.md: missing section for v{version}")
+    if len(headings) > 1:
+        raise ValueError(f"CHANGELOG.md: duplicate sections for v{version}")
+    heading = headings[0]
+    if re.fullmatch(
+        rf"## v{re.escape(version)}(?:\s+-\s+[^\n]+)?\s*",
+        heading.group(0),
+    ) is None:
+        raise ValueError(f"CHANGELOG.md: invalid heading for v{version}")
+    remainder = text[heading.end() :]
+    next_heading = re.search(r"^##\s+", remainder, flags=re.MULTILINE)
+    body = remainder[: next_heading.start()] if next_heading else remainder
+    body = body.strip()
+    if not body or not any(line.startswith("- ") for line in body.splitlines()):
+        raise ValueError(f"CHANGELOG.md: v{version} must contain release bullets")
+    return body
+
+
+def write_release_notes(versions: dict[str, str]) -> None:
+    highlights = changelog_section(SUITE_VERSION)
+    lines = [
+        f"# AX1 Bizplan v{SUITE_VERSION}",
+        "",
+        "## 주요 변경사항",
+        "",
+        highlights,
+        "",
+        "## 설치·업데이트",
+        "",
+        f"- 전체 묶음: `{PLUGIN_NAME}-v{SUITE_VERSION}.zip`",
+        "- 필요한 스킬만 설치할 때: Release의 개별 스킬 ZIP",
+        "- 다운로드 후 `SHA256SUMS.txt`로 파일 무결성 확인",
+        "- 업데이트 전 기존 사용자 스킬을 백업한 뒤 새 버전 설치",
+        "",
+        "## 포함 스킬",
+        "",
+        "| 스킬 | 버전 |",
+        "|---|---:|",
+    ]
+    lines.extend(f"| `{name}` | `{version}` |" for name, version in versions.items())
+    lines.extend(
+        [
+            "",
+            "## 안내",
+            "",
+            f"- [전체 변경이력]({REPOSITORY_URL}/blob/v{SUITE_VERSION}/CHANGELOG.md)",
+            f"- [팀원 설치·활용 안내]({REPOSITORY_URL}/blob/v{SUITE_VERSION}/docs/team-guide.md)",
+            f"- [개선 요청 Form]({FEEDBACK_FORM_URL})",
+            "",
+        ]
+    )
+    (DIST_ROOT / "RELEASE_NOTES.md").write_text(
+        "\n".join(lines),
+        encoding="utf-8",
+    )
+
+
 def main() -> int:
     sync_shared_resources()
     versions = validate_skills()
     build_zips(versions)
+    write_release_notes(versions)
     write_checksums()
     version_summary = ", ".join(f"{name}=v{version}" for name, version in versions.items())
     print(f"Built {PLUGIN_NAME} v{SUITE_VERSION}: {version_summary}")

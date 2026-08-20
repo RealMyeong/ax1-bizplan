@@ -72,7 +72,7 @@ docs/            팀 운영 양식
 python scripts/build_release.py
 ```
 
-검증이 통과하면 `dist/`에 전체 플러그인 ZIP, 개별 스킬 ZIP과 SHA-256 체크섬이 생성됩니다. `v*` 태그를 GitHub에 올리면 GitHub Actions가 같은 검증을 수행하고 Release를 생성합니다.
+검증이 통과하면 `dist/`에 전체 플러그인 ZIP, 개별 스킬 ZIP, SHA-256 체크섬과 `CHANGELOG.md` 기반 `RELEASE_NOTES.md`가 생성됩니다. `v*` 태그를 GitHub에 올리면 GitHub Actions가 같은 검증을 수행하고 주요 변경사항이 포함된 Release를 생성합니다.
 
 ## 팀원 업데이트 요청 예시
 

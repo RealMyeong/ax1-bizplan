@@ -648,7 +648,7 @@ git status --short
 git diff --check
 git diff</code></pre>
           </div>
-          <p>전체 ZIP, 7개 개별 스킬 ZIP, 체크섬과 저장 금지 자료 포함 여부를 확인합니다. HWPX 변경이면 익명화 샘플의 dry-run·readback·프리뷰·Windows 한컴 전체 페이지 관찰까지 수행합니다.</p>
+          <p>전체 ZIP, 7개 개별 스킬 ZIP, 체크섬, <code>RELEASE_NOTES.md</code>와 저장 금지 자료 포함 여부를 확인합니다. 릴리스 노트의 주요 변경점은 현재 버전의 <code>CHANGELOG.md</code>에서 자동 생성됩니다. HWPX 변경이면 익명화 샘플의 dry-run·readback·프리뷰·Windows 한컴 전체 페이지 관찰까지 수행합니다.</p>
         </article>
 
         <article class="card">
@@ -661,7 +661,7 @@ git tag vX.Y.Z
 git push origin main
 git push origin vX.Y.Z</code></pre>
           </div>
-          <p>태그는 <code>VERSION</code> 앞에 <code>v</code>를 붙인 값과 같아야 합니다.</p>
+          <p>태그는 <code>VERSION</code> 앞에 <code>v</code>를 붙인 값과 같아야 합니다. 자동 Release에는 주요 변경사항, 설치 안내와 스킬별 버전이 포함됩니다. 이미 같은 버전의 Release가 있으면 <code>main</code> 검증 시 태그와 첨부 파일은 유지하고 본문만 갱신합니다.</p>
         </article>
 
         <article class="card span-2">

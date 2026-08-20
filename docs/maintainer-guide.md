@@ -140,6 +140,7 @@ python scripts/build_release.py
 - `dist/ax1-bizplan-v버전.zip`
 - `dist/skills/`의 개별 스킬 ZIP
 - `dist/SHA256SUMS.txt`
+- `dist/RELEASE_NOTES.md`의 주요 변경사항·설치 파일·포함 스킬 버전
 - 실제 RFP, 계획서, 평가의견, 산출물이 ZIP에 포함되지 않았는지
 - 변경된 스킬의 대표 요청문과 경계 사례가 기대대로 동작하는지
 - HWPX 변경이면 `mcp_server_health()`의 코어·자동화·플러그인 버전과 도구 표면이 기준 조합과 일치하는지
@@ -176,7 +177,7 @@ git commit -m "Update AX1 Bizplan to vX.Y.Z"
 git push -u origin fix/간단한-작업명
 ```
 
-병합 후 태그를 올리면 GitHub Actions가 검증하고 Release 파일을 생성합니다.
+병합 후 태그를 올리면 GitHub Actions가 검증하고 Release 파일을 생성합니다. Release 본문의 `주요 변경사항`은 `CHANGELOG.md`에서 현재 `VERSION`과 같은 버전 구간을 가져오므로, 태그를 만들기 전에 사용자 관점의 핵심 변경을 해당 구간의 글머리표로 정리합니다. 실제 기관명·문서 내용·내부 링크는 릴리스 노트에도 넣지 않습니다.
 
 ```powershell
 git switch main
@@ -187,6 +188,8 @@ git push origin vX.Y.Z
 ```
 
 태그 값은 반드시 `VERSION` 앞에 `v`를 붙인 값과 같아야 합니다.
+
+`main`에 같은 `VERSION`의 이미 게시된 Release가 있으면 워크플로가 Release 본문만 최신 `RELEASE_NOTES.md`로 갱신합니다. 태그와 ZIP 자산은 바꾸지 않습니다. 기능·스킬 내용이 달라졌다면 기존 Release를 고치지 말고 새 패치 또는 마이너 버전으로 배포합니다.
 
 ## 8. GitHub 계정이 없는 팀원에게 배포
 
@@ -250,7 +253,7 @@ Issue에는 반영 버전을 기록하고 닫습니다. 추가 검증이 필요�
 4. 수정 브랜치에서 재현 테스트 추가
 5. 패치 버전으로 다시 릴리스
 
-이미 배포한 Git 태그와 Release를 임의로 덮어쓰지 않습니다. 수정 사항은 새 버전으로 배포해 이력을 보존합니다.
+이미 배포한 Git 태그와 Release 자산을 임의로 덮어쓰지 않습니다. 릴리스 노트의 오탈자·요약 보완만 자산과 태그를 바꾸지 않는 범위에서 허용하며, 기능 수정은 새 버전으로 배포해 이력을 보존합니다.
 
 ## 공식 참고자료
 

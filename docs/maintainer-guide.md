@@ -9,15 +9,14 @@
 - 팀원은 GitHub Issue를 직접 만들지 않아도 됩니다. 개선 요청 Form이 단일 접수 창구입니다.
 - Form 접수 내용을 검토한 뒤 재현 가능하고 범용적인 항목만 익명화하여 GitHub Issue로 전환합니다.
 - `main`에는 팀이 바로 설치해도 되는 안정 버전만 둡니다.
+- HWPX 엔진은 upstream 플러그인을 별도 의존성으로 유지하고, AX1 저장소에는 업무 판단·검증 규칙만 둡니다.
 
 ## 운영 링크
 
 | 용도 | 링크 |
 |---|---|
 | 팀 개선 요청 Form | <https://forms.gle/GG6GYrgboA4pnkVE6> |
-| 응답 관리 시트 | <https://docs.google.com/spreadsheets/d/18VbGQ4ofPvqrTujPDSwcatgOiBWrbrcr_afOqd8T1Sg/edit> |
-| AX1 관리 Drive | <https://drive.google.com/drive/folders/1phJEIHpeJvLnRPNn6YxogUDxjL4knlUv> |
-| 원본근거 제한 폴더 | <https://drive.google.com/drive/folders/1YvjZxSAYpI1nDDvXmGSIztazosajhnJU> |
+| 관리자 전용 링크 | 제한 Drive의 `AX1 Bizplan 운영 링크` 문서에서 확인 |
 | GitHub 저장소 | <https://github.com/RealMyeong/ax1-bizplan> |
 | GitHub Releases | <https://github.com/RealMyeong/ax1-bizplan/releases> |
 
@@ -106,7 +105,8 @@ git switch -c fix/간단한-작업명
 - 단순 문구·호출 조건 수정: 해당 `SKILL.md`와 관련 테스트만 변경
 - 신규 근거·선정/탈락 사례 반영: `bizplan-evidence-update`를 사용해 근거 레지스터, 프로파일, 검토 렌즈와 테스트를 함께 갱신
 - 출력 구조 변경: 관련 스킬의 참조자료·에셋·예상 동작 예시까지 동기화
-- 공통 규칙 변경: 6개 스킬에 미치는 영향을 확인하고 필요한 복사본을 함께 갱신
+- 공통 규칙 변경: 7개 스킬에 미치는 영향을 확인하고 필요한 복사본을 함께 갱신
+- HWPX 규칙·버전 변경: 익명화된 HWPX로 생성, 사본 편집, readback, 프리뷰와 Windows 한컴 재개방까지 검증
 
 에이전트 요청 예시:
 
@@ -142,6 +142,21 @@ python scripts/build_release.py
 - `dist/SHA256SUMS.txt`
 - 실제 RFP, 계획서, 평가의견, 산출물이 ZIP에 포함되지 않았는지
 - 변경된 스킬의 대표 요청문과 경계 사례가 기대대로 동작하는지
+- HWPX 변경이면 `mcp_server_health()`의 코어·자동화·플러그인 버전과 도구 표면이 기준 조합과 일치하는지
+- HWPX 원본 SHA-256이 유지되고 dry-run·semantic diff·open-safety·readback이 통과하는지
+- Windows 한컴에서 모든 페이지를 열어 확인하고 화면 증거를 남겼는지
+
+로컬 한컴 설치만으로 자동 `render_checked` 영수증이 생기지는 않습니다. 자동 실한컴 렌더는 별도 렌더 큐가 필요하며, 큐가 없으면 사람의 전체 페이지 관찰 상태를 별도로 기록합니다.
+
+Windows 인수시험은 프로젝트·사용자 문서 대신 합성 문서를 만드는 다음 스크립트로 수행합니다. 출력 폴더는 새 경로를 사용합니다.
+
+```powershell
+uv run --no-project --with "mcp>=1.2" --with "anyio>=4" python scripts/hwpx_acceptance_test.py `
+  --mcp-config "$env:USERPROFILE/.codex/plugins/cache/hwpx/hwpx-plugin/2.0.1/.mcp.json" `
+  --output-dir "../tmp/ax1-hwpx-acceptance"
+```
+
+스크립트는 혼합 양식 commit의 구조·값 검증 영수증, readback과 프리뷰를 확인합니다. 검증된 Windows 조합에서 별도 `verify_form_fill`은 렌더 큐가 없을 때 멈출 수 있어 기본 인수시험과 분리합니다. 이 제한은 통과로 숨기지 말고, 최종 생성된 `ax1-hwpx-smoke-form-filled.hwpx`를 한컴에서 열어 전체 페이지를 확인한 뒤 `hwpx.visual-review.v1` 화면 증거를 별도로 남깁니다.
 
 검증 후 변경 내용을 확인합니다.
 
@@ -191,6 +206,7 @@ GitHub Release에서 다음 두 파일을 받아 공유 드라이브의 배포 �
 - Release ZIP 또는 GitHub Release 링크
 - 개선 요청 Form 링크
 - 문제 발생 시 이전 버전으로 되돌리는 방법
+- HWPX 기능이 바뀌었으면 검증된 upstream 버전 조합과 앱 재시작 필요 여부
 
 ## 9. 팀 공지 예시
 

@@ -20,10 +20,27 @@ GitHub 접근 권한이 없는 팀원에게는 배포자가 최신 Release ZIP�
 |---|---|
 | `bizplan-prepare` | 표준 작업공간과 준비현황 체크리스트 생성 |
 | `bizplan-draft` | 아이디어·구현방식 구체화 및 신규 초안 작성 |
+| `bizplan-hwpx` | 확정 문안을 HWPX 양식에 반영하고 한컴 검증 |
 | `bizplan-review` | 평가위원 관점 사전 검토와 교정문안 작성 |
 | `bizplan-revise` | 검토의견 반영과 관련 항목 전역 동기화 |
 | `bizplan-preflight` | 제출 직전 형식·수치·도표·버전 최종 점검 |
 | `bizplan-evidence-update` | 새 근거를 레지스터·프로파일·테스트에 누적 |
+
+## HWPX 선행 설치
+
+`bizplan-hwpx`는 HWPX 엔진을 저장소에 복제하지 않고 [airmang/hwpx-plugins](https://github.com/airmang/hwpx-plugins)를 별도 의존성으로 사용합니다. HWPX를 사용하는 팀원은 한 번만 다음 플러그인을 설치하고 Codex 또는 Claude를 다시 시작합니다.
+
+```powershell
+codex plugin marketplace add airmang/hwpx-plugins --ref b7ab90a1db826c5fa5db024ad01dc5132d073953
+codex plugin add hwpx-plugin@hwpx
+```
+
+```powershell
+claude plugin marketplace add airmang/hwpx-plugins@b7ab90a1db826c5fa5db024ad01dc5132d073953
+claude plugin install hwpx-plugin@hwpx
+```
+
+Windows에서는 `uvx`가 PATH에 있어야 하며, 실제 제출 후보는 한컴오피스에서 전체 페이지를 다시 확인해야 합니다. AX1 검증 기준 조합은 source ref `b7ab90a1db826c5fa5db024ad01dc5132d073953`, `python-hwpx 6.2.1`, `python-hwpx-automation 7.0.2`, `hwpx-plugin 2.0.1`입니다.
 
 ## 저장소 구성
 
@@ -47,7 +64,7 @@ docs/            팀 운영 양식
 - 변경은 짧은 작업 브랜치에서 검토한 뒤 `main`에 합칩니다.
 - 저장소 버전은 루트 `VERSION`과 `.codex-plugin/plugin.json`에 동일하게 기록합니다.
 - 개별 스킬 버전은 각 `SKILL.md`의 `metadata.version`으로 별도 관리합니다.
-- 릴리스 태그는 `v0.4.0` 형식으로 생성합니다.
+- 릴리스 태그는 `v0.5.0` 형식으로 생성합니다.
 
 ## 검증 및 패키징
 
@@ -63,7 +80,7 @@ Codex에서는 다음처럼 요청합니다. 비공개 저장소에 접근할 �
 
 ```text
 $skill-installer를 사용해서 AX1의 GitHub ax1-bizplan 저장소에서
-최신 안정 릴리스를 확인하고 AX1 사업계획서 스킬 6개를 사용자 범위에 설치 또는 업데이트해줘.
+최신 안정 릴리스를 확인하고 AX1 사업계획서 스킬 7개를 사용자 범위에 설치 또는 업데이트해줘.
 기존 버전은 먼저 백업하고, 설치 전후 버전과 검증 결과도 알려줘.
 저장소: https://github.com/RealMyeong/ax1-bizplan
 ```
@@ -75,7 +92,7 @@ Claude에서는 같은 저장소의 `skills/`를 `~/.claude/skills/`에 설치�
 - 실제 사업계획서와 발표자료 원본
 - 공개되지 않은 RFP, 평가의견서, 계약·고객 자료
 - 개인정보, 계정정보, API 키와 인증서
-- 작업 중간파일과 자동 생성된 DOCX·HWP·PDF
+- 작업 중간파일과 자동 생성된 DOCX·HWP·HWPX·PDF
 
 새 사례에서 얻은 내용은 원문을 올리는 대신 `docs/feedback-intake-template.md`로 정리하고, 재사용 가능한 규칙·테스트만 저장소에 반영합니다.
 

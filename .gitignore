@@ -15,12 +15,12 @@ __pycache__/
 /private/
 /inbox/
 /workspaces/
-/*.hwp
-/*.hwpx
-/*.docx
-/*.pdf
-/*.pptx
-/*.xlsx
+*.hwp
+*.hwpx
+*.docx
+*.pdf
+*.pptx
+*.xlsx
 
 # Operating system files
 .DS_Store

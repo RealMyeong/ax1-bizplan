@@ -22,6 +22,18 @@ SUITE_VERSION = VERSION_FILE.read_text(encoding="utf-8").strip()
 SKILLS_ROOT = ROOT / "skills"
 DIST_ROOT = ROOT / "dist"
 PLUGIN_NAME = "ax1-bizplan"
+FORBIDDEN_ARTIFACT_SUFFIXES = {
+    ".hwp",
+    ".hwpx",
+    ".docx",
+    ".pdf",
+    ".pptx",
+    ".xlsx",
+    ".pem",
+    ".key",
+    ".p12",
+    ".pfx",
+}
 
 GENERAL_SKILLS = (
     "bizplan-draft",
@@ -29,8 +41,12 @@ GENERAL_SKILLS = (
     "bizplan-revise",
     "bizplan-preflight",
 )
-ALL_SKILLS = (*GENERAL_SKILLS, "bizplan-evidence-update")
-ALL_SKILLS = ("bizplan-prepare", *ALL_SKILLS)
+ALL_SKILLS = (
+    "bizplan-prepare",
+    *GENERAL_SKILLS,
+    "bizplan-hwpx",
+    "bizplan-evidence-update",
+)
 
 GENERAL_REFERENCES = {
     "01-core-principles.md": "shared/core/01-core-principles.md",
@@ -160,7 +176,21 @@ def validate_plugin() -> None:
             raise ValueError(f"plugin.json: {key} must be {value!r}")
 
 
+def validate_no_private_artifacts() -> None:
+    forbidden = [
+        path.relative_to(ROOT).as_posix()
+        for path in SKILLS_ROOT.rglob("*")
+        if path.is_file() and path.suffix.lower() in FORBIDDEN_ARTIFACT_SUFFIXES
+    ]
+    if forbidden:
+        raise ValueError(
+            "skills contain forbidden document or credential artifacts: "
+            + ", ".join(sorted(forbidden))
+        )
+
+
 def validate_skills() -> dict[str, str]:
+    validate_no_private_artifacts()
     versions: dict[str, str] = {}
     for skill_name in ALL_SKILLS:
         skill = SKILLS_ROOT / skill_name

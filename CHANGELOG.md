@@ -2,10 +2,18 @@
 
 ## Unreleased
 
+## v0.5.0 - 2026-08-20
+
 - 팀원용 Codex·Claude 설치, 활용, 업데이트 안내 추가
 - 배포자용 Form 접수, GitHub Issue 전환, 검증, 릴리스, 공지와 롤백 절차 추가
 - 팀원용과 배포자용 내용을 전환하고 요청문을 복사할 수 있는 단일 HTML 안내문 추가
 - Google Form을 공식 개선 요청 창구로 연결
+- `bizplan-hwpx`를 추가해 확정 문안을 HWPX 양식에 원본 보존·dry-run·readback 방식으로 반영
+- HWPX 구조 검증, 페이지 프리뷰와 Windows 한컴 전체 페이지 관찰을 분리해 정직한 제출 상태를 기록
+- upstream 검증 기준을 source ref `b7ab90a1db826c5fa5db024ad01dc5132d073953`, `python-hwpx 6.2.1`, `python-hwpx-automation 7.0.2`, `hwpx-plugin 2.0.1`로 고정
+- 초안·수정·최종점검·작업준비 스킬이 HWPX 요청을 새 전용 스킬로 연결하도록 갱신
+- 실제 문서·인증서가 스킬 하위에 들어오면 빌드를 중단하도록 배포 안전장치 강화
+- Windows에서 별도 form-fill 렌더 verifier가 멈출 수 있는 upstream 제한을 구조·값 영수증, readback, 프리뷰와 한컴 관찰로 분리해 정직하게 기록
 
 ## v0.4.0 - 2026-08-20
 

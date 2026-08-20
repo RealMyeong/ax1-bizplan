@@ -2,6 +2,18 @@
 
 AX1 팀의 국가 R&D·공모 사업계획서 업무를 위한 배포 전용 저장소입니다. 실제 공고문, RFP, 사업계획서 원본과 생성 산출물은 이 저장소에 넣지 않고 접근이 통제된 공유 드라이브에서 관리합니다.
 
+## 바로가기
+
+| 대상 | 문서·창구 |
+|---|---|
+| 전체 안내 | [HTML 안내문](docs/ax1-bizplan-guide.html) |
+| 팀원 | [설치·활용·업데이트 안내](docs/team-guide.md) |
+| 배포자 | [개선 접수·개발·릴리스 운영 안내](docs/maintainer-guide.md) |
+| 개선 요청 | [AX1 사업계획서 스킬 개선 요청 Form](https://forms.gle/GG6GYrgboA4pnkVE6) |
+| 배포 파일 | [GitHub Releases](https://github.com/RealMyeong/ax1-bizplan/releases) |
+
+GitHub 접근 권한이 없는 팀원에게는 배포자가 최신 Release ZIP과 `SHA256SUMS.txt`를 공유 드라이브로 전달합니다. 팀원은 설치 경로를 직접 다루기보다 Codex 또는 Claude에게 설치·백업·검증을 요청하는 방식을 기본으로 합니다.
+
 ## 포함 스킬
 
 | 스킬 | 용도 |
@@ -47,15 +59,16 @@ python scripts/build_release.py
 
 ## 팀원 업데이트 요청 예시
 
-Codex에서는 다음처럼 요청합니다.
+Codex에서는 다음처럼 요청합니다. 비공개 저장소에 접근할 수 없다면 공유 드라이브에서 받은 Release ZIP을 첨부하고 같은 요청을 사용합니다.
 
 ```text
-$skill-installer를 사용해서 AX1의 비공개 GitHub ax1-bizplan 저장소에서
-최신 안정 릴리스를 확인하고 기존 버전을 백업한 다음 스킬을 업데이트해줘.
-설치 전후 버전과 검증 결과도 알려줘.
+$skill-installer를 사용해서 AX1의 GitHub ax1-bizplan 저장소에서
+최신 안정 릴리스를 확인하고 AX1 사업계획서 스킬 6개를 사용자 범위에 설치 또는 업데이트해줘.
+기존 버전은 먼저 백업하고, 설치 전후 버전과 검증 결과도 알려줘.
+저장소: https://github.com/RealMyeong/ax1-bizplan
 ```
 
-Claude에서는 같은 저장소의 `skills/`를 기준으로 설치하되, 제품별 설치 경로와 지원 형식은 사용하는 Claude 환경에서 확인합니다. 스킬 본문·참조자료는 공통으로 유지하고 제품별 설치 과정만 분리합니다.
+Claude에서는 같은 저장소의 `skills/`를 `~/.claude/skills/`에 설치합니다. 자세한 요청문과 활용 예시는 [팀원 안내](docs/team-guide.md)를 따릅니다. 스킬 본문·참조자료는 공통으로 유지하고 제품별 설치 과정만 분리합니다.
 
 ## 저장 금지 자료
 

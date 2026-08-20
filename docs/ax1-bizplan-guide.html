@@ -1,0 +1,727 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>AX1 Bizplan 설치·활용·배포 안내</title>
+  <script>document.documentElement.classList.add('js');</script>
+  <style>
+    :root {
+      --ink: #17233d;
+      --muted: #5f6c82;
+      --line: #dbe3ef;
+      --paper: #ffffff;
+      --wash: #f3f6fa;
+      --navy: #14213d;
+      --blue: #2457d6;
+      --cyan: #12a7b4;
+      --green: #1d8a64;
+      --orange: #c66a17;
+      --red: #b53a45;
+      --radius: 18px;
+      --shadow: 0 14px 36px rgba(20, 33, 61, 0.10);
+      font-family: "Pretendard", "Noto Sans KR", "Malgun Gothic", Arial, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--wash);
+      line-height: 1.65;
+      word-break: keep-all;
+    }
+    a { color: var(--blue); }
+    button, a { -webkit-tap-highlight-color: transparent; }
+    button { font: inherit; }
+
+    .topbar {
+      background: var(--navy);
+      color: #fff;
+      border-bottom: 4px solid var(--cyan);
+    }
+    .topbar-inner,
+    .page {
+      width: min(1160px, calc(100% - 40px));
+      margin: 0 auto;
+    }
+    .topbar-inner {
+      min-height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 800;
+      letter-spacing: .02em;
+    }
+    .brand-mark {
+      display: grid;
+      place-items: center;
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
+      background: var(--cyan);
+      color: #062e36;
+      font-size: 14px;
+    }
+    .version {
+      padding: 5px 10px;
+      border: 1px solid rgba(255,255,255,.28);
+      border-radius: 999px;
+      color: #d9e2f4;
+      font-size: 12px;
+    }
+
+    .page { padding: 36px 0 64px; }
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.5fr) minmax(280px, .7fr);
+      gap: 22px;
+      padding: 42px;
+      border-radius: 26px;
+      background: var(--paper);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      position: relative;
+    }
+    .hero::after {
+      content: "";
+      position: absolute;
+      width: 230px;
+      height: 230px;
+      right: -88px;
+      top: -92px;
+      border: 32px solid rgba(18,167,180,.12);
+      border-radius: 50%;
+    }
+    .eyebrow {
+      margin: 0 0 10px;
+      color: var(--cyan);
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+    h1, h2, h3 { line-height: 1.25; }
+    h1 {
+      margin: 0;
+      max-width: 760px;
+      font-size: clamp(32px, 5vw, 56px);
+      letter-spacing: -.04em;
+    }
+    .hero-copy {
+      max-width: 760px;
+      margin: 18px 0 0;
+      color: var(--muted);
+      font-size: 18px;
+    }
+    .hero-aside {
+      align-self: end;
+      padding: 22px;
+      border-left: 4px solid var(--cyan);
+      background: #eef9fa;
+      border-radius: 14px;
+      position: relative;
+      z-index: 1;
+    }
+    .hero-aside strong { display: block; margin-bottom: 6px; }
+
+    .quick-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 24px;
+    }
+    .button-link,
+    .tab-button,
+    .copy-button {
+      border: 0;
+      border-radius: 11px;
+      cursor: pointer;
+      font-weight: 750;
+      transition: transform .15s ease, background .15s ease;
+    }
+    .button-link {
+      display: inline-flex;
+      align-items: center;
+      min-height: 42px;
+      padding: 0 15px;
+      text-decoration: none;
+      background: var(--navy);
+      color: #fff;
+    }
+    .button-link.secondary { background: #e9eef8; color: var(--navy); }
+    .button-link:hover,
+    .tab-button:hover,
+    .copy-button:hover { transform: translateY(-1px); }
+
+    .audience-switch {
+      position: sticky;
+      top: 10px;
+      z-index: 5;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin: 24px 0;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: rgba(255,255,255,.94);
+      box-shadow: 0 8px 20px rgba(20,33,61,.08);
+      backdrop-filter: blur(10px);
+    }
+    .tab-button {
+      min-height: 48px;
+      padding: 0 18px;
+      background: transparent;
+      color: var(--muted);
+    }
+    .tab-button[aria-selected="true"] { background: var(--navy); color: #fff; }
+
+    .js .guide-panel:not(.is-active) { display: none; }
+    .panel-heading {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 24px;
+      margin: 38px 0 18px;
+    }
+    .panel-heading h2 { margin: 0; font-size: 30px; letter-spacing: -.025em; }
+    .panel-heading p { margin: 4px 0 0; color: var(--muted); }
+
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+    .card {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 26px;
+      box-shadow: 0 8px 22px rgba(20,33,61,.05);
+    }
+    .card h3 { margin: 0 0 10px; font-size: 20px; }
+    .card p { margin: 8px 0; color: var(--muted); }
+    .span-2 { grid-column: 1 / -1; }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 18px;
+    }
+    .flow-item {
+      min-height: 122px;
+      padding: 18px;
+      border-radius: 15px;
+      background: #f7f9fc;
+      border-top: 4px solid var(--blue);
+    }
+    .flow-item:nth-child(2n) { border-top-color: var(--cyan); }
+    .flow-no {
+      display: inline-grid;
+      place-items: center;
+      width: 28px;
+      height: 28px;
+      margin-bottom: 10px;
+      border-radius: 50%;
+      background: var(--navy);
+      color: #fff;
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .flow-item strong { display: block; }
+    .flow-item small { color: var(--muted); }
+
+    .callout {
+      margin: 18px 0;
+      padding: 18px 20px;
+      border-left: 4px solid var(--orange);
+      border-radius: 12px;
+      background: #fff7ea;
+      color: #694015;
+    }
+    .callout.safe { border-left-color: var(--green); background: #eef9f5; color: #235543; }
+    .callout.danger { border-left-color: var(--red); background: #fff1f2; color: #6e2830; }
+
+    .code-wrap {
+      position: relative;
+      margin-top: 14px;
+      border-radius: 14px;
+      overflow: hidden;
+      background: #101827;
+    }
+    pre {
+      margin: 0;
+      padding: 22px 22px 24px;
+      overflow-x: auto;
+      color: #e6edf7;
+      font: 13px/1.7 Consolas, "SFMono-Regular", monospace;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .copy-button {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      padding: 7px 10px;
+      background: #26344d;
+      color: #fff;
+      font-size: 12px;
+    }
+    .copy-button.copied { background: var(--green); }
+
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { padding: 13px 14px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { background: #eef2f8; color: var(--navy); font-weight: 800; }
+    tbody tr:hover { background: #fafbfd; }
+    code {
+      padding: .15em .38em;
+      border-radius: 5px;
+      background: #edf1f7;
+      color: #203969;
+      font-family: Consolas, monospace;
+      font-size: .9em;
+    }
+    pre code { padding: 0; background: transparent; color: inherit; }
+
+    .checklist {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px 18px;
+      padding: 0;
+      list-style: none;
+    }
+    .checklist li {
+      position: relative;
+      padding-left: 30px;
+      color: var(--muted);
+    }
+    .checklist li::before {
+      content: "✓";
+      position: absolute;
+      left: 0;
+      top: 0;
+      display: grid;
+      place-items: center;
+      width: 21px;
+      height: 21px;
+      border-radius: 6px;
+      background: #dcf2ea;
+      color: var(--green);
+      font-weight: 900;
+    }
+
+    footer {
+      margin-top: 30px;
+      padding: 24px 0 0;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    @media (max-width: 840px) {
+      .topbar-inner, .page { width: min(100% - 24px, 1160px); }
+      .hero { grid-template-columns: 1fr; padding: 28px; }
+      .card-grid { grid-template-columns: 1fr; }
+      .span-2 { grid-column: auto; }
+      .flow { grid-template-columns: 1fr 1fr; }
+      .checklist { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 520px) {
+      .topbar-inner { min-height: 58px; }
+      .version { display: none; }
+      .page { padding-top: 20px; }
+      .hero { padding: 24px 20px; border-radius: 20px; }
+      .hero-copy { font-size: 16px; }
+      .audience-switch { top: 6px; }
+      .tab-button { padding: 0 8px; font-size: 14px; }
+      .card { padding: 20px; }
+      .flow { grid-template-columns: 1fr; }
+      .panel-heading { align-items: start; flex-direction: column; }
+    }
+    @media print {
+      body { background: #fff; font-size: 11pt; }
+      .topbar { border-bottom-width: 2px; }
+      .page { width: 100%; padding: 18px 0; }
+      .hero, .card { box-shadow: none; }
+      .hero { padding: 22px; }
+      .audience-switch, .copy-button, .quick-links { display: none !important; }
+      .js .guide-panel { display: block !important; }
+      .guide-panel + .guide-panel { page-break-before: always; }
+      .card, .flow-item, table { break-inside: avoid; }
+      a { color: inherit; text-decoration: none; }
+      pre { white-space: pre-wrap; font-size: 8pt; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand"><span class="brand-mark">AX1</span> AX1 Bizplan</div>
+      <div class="version">안정 버전 v0.4.0 · 2026-08-20</div>
+    </div>
+  </header>
+
+  <main class="page">
+    <section class="hero" aria-labelledby="page-title">
+      <div>
+        <p class="eyebrow">AX1 Team Agent Skills</p>
+        <h1 id="page-title">설치는 한 번,<br>개선은 한 곳으로.</h1>
+        <p class="hero-copy">사업계획서 작업공간 준비부터 초안, 검토, 수정, 제출 전 점검까지 이어지는 AX1 팀 전용 에이전트 스킬 운영 안내입니다.</p>
+        <div class="quick-links" aria-label="주요 링크">
+          <a class="button-link" href="https://forms.gle/GG6GYrgboA4pnkVE6" target="_blank" rel="noreferrer">개선 요청 Form</a>
+          <a class="button-link secondary" href="https://github.com/RealMyeong/ax1-bizplan/releases" target="_blank" rel="noreferrer">최신 Release</a>
+          <a class="button-link secondary" href="https://github.com/RealMyeong/ax1-bizplan" target="_blank" rel="noreferrer">GitHub 저장소</a>
+        </div>
+      </div>
+      <aside class="hero-aside">
+        <strong>가장 중요한 원칙</strong>
+        사용자 범위에 설치하면 새 프로젝트에서도 다시 설치할 필요가 없습니다. 실제 사업계획서와 민감정보는 GitHub와 Form에 올리지 않습니다.
+      </aside>
+    </section>
+
+    <nav class="audience-switch" role="tablist" aria-label="안내 대상 선택">
+      <button class="tab-button" type="button" role="tab" aria-selected="true" aria-controls="team-guide" id="team-tab" data-target="team-guide">팀원 설치·활용 안내</button>
+      <button class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="maintainer-guide" id="maintainer-tab" data-target="maintainer-guide">배포자 운영 안내</button>
+    </nav>
+
+    <section id="team-guide" class="guide-panel is-active" role="tabpanel" aria-labelledby="team-tab">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">For Team Members</p>
+          <h2>팀원 설치·활용 안내</h2>
+          <p>설치 경로를 직접 다루지 말고 아래 요청문을 에이전트에게 전달하세요.</p>
+        </div>
+      </div>
+
+      <div class="card-grid">
+        <article class="card">
+          <h3>Codex 설치 요청문</h3>
+          <p>GitHub 접근 권한이 있으면 아래 내용을 새 Codex 작업에 붙여넣습니다.</p>
+          <div class="code-wrap">
+            <button class="copy-button" type="button">복사</button>
+            <pre><code>$skill-installer를 사용해서 AX1 Bizplan 스킬을 사용자 범위에 설치해줘.
+
+설치 원본: https://github.com/RealMyeong/ax1-bizplan
+대상: 저장소의 skills 폴더에 있는 6개 스킬 전체
+
+1. VERSION과 최신 안정 Release를 확인해줘.
+2. 기존 버전과 위치를 확인하고 먼저 백업해줘.
+3. 최신 버전을 사용자 범위에 설치해 새 프로젝트에서도 사용할 수 있게 해줘.
+4. 참조·에셋·스크립트가 빠짐없이 설치됐는지 확인해줘.
+5. 설치 전후 버전, 스킬 목록과 검증 결과를 알려줘.
+6. 다시 시작이 필요하면 알려줘.</code></pre>
+          </div>
+        </article>
+
+        <article class="card">
+          <h3>Claude Code 설치 요청문</h3>
+          <p>Claude Code 사용자 스킬 경로에 6개 스킬을 함께 설치합니다.</p>
+          <div class="code-wrap">
+            <button class="copy-button" type="button">복사</button>
+            <pre><code>AX1 Bizplan 스킬을 모든 프로젝트에서 사용할 수 있도록 사용자 스킬로 설치해줘.
+
+설치 원본: https://github.com/RealMyeong/ax1-bizplan
+원본 폴더: skills
+설치 위치: ~/.claude/skills
+
+1. VERSION과 최신 안정 Release를 확인해줘.
+2. 기존 AX1 스킬이 있으면 먼저 백업해줘.
+3. 6개 스킬을 참조·에셋·스크립트와 함께 설치해줘.
+4. 설치 전후 버전과 스킬 목록을 알려줘.
+5. Claude Code가 스킬을 인식하는지 확인해줘.</code></pre>
+          </div>
+        </article>
+
+        <article class="card span-2">
+          <h3>GitHub 계정이 없을 때</h3>
+          <div class="callout">
+            GitHub에서 404 또는 권한 오류가 나오면 반복 시도하지 않습니다. 배포자에게 최신 <code>ax1-bizplan-vX.Y.Z.zip</code>과 <code>SHA256SUMS.txt</code>를 요청합니다.
+          </div>
+          <div class="code-wrap">
+            <button class="copy-button" type="button">복사</button>
+            <pre><code>첨부한 AX1 Bizplan Release ZIP과 SHA256SUMS.txt의 체크섬을 확인해줘. 기존 버전을 백업한 뒤 6개 스킬을 사용자 범위에 설치하고, 설치 전후 버전과 검증 결과를 알려줘.</code></pre>
+          </div>
+        </article>
+      </div>
+
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">Recommended Workflow</p>
+          <h2>권장 작업 순서</h2>
+        </div>
+      </div>
+      <section class="card">
+        <div class="flow" aria-label="사업계획서 작업 흐름">
+          <div class="flow-item"><span class="flow-no">1</span><strong>준비</strong><small>폴더·체크리스트 구성</small></div>
+          <div class="flow-item"><span class="flow-no">2</span><strong>초안</strong><small>아이디어·구현방식 구체화</small></div>
+          <div class="flow-item"><span class="flow-no">3</span><strong>검토</strong><small>평가위원 관점 점검</small></div>
+          <div class="flow-item"><span class="flow-no">4</span><strong>수정</strong><small>의견과 관련 항목 동기화</small></div>
+          <div class="flow-item"><span class="flow-no">5</span><strong>제출점검</strong><small>형식·수치·버전 최종 확인</small></div>
+        </div>
+      </section>
+
+      <div class="card-grid" style="margin-top:18px">
+        <article class="card span-2">
+          <h3>스킬 선택표</h3>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>스킬</th><th>사용 시점</th><th>Codex / Claude 호출</th></tr></thead>
+              <tbody>
+                <tr><td><code>bizplan-prepare</code></td><td>프로젝트 최상위 폴더와 준비현황 구성</td><td><code>$bizplan-prepare</code> / <code>/bizplan-prepare</code></td></tr>
+                <tr><td><code>bizplan-draft</code></td><td>아이디어·구현방식을 질문으로 구체화하고 DOCX 초안 작성</td><td><code>$bizplan-draft</code> / <code>/bizplan-draft</code></td></tr>
+                <tr><td><code>bizplan-review</code></td><td>공고문·RFP·평가배점표 기준 사전 검토</td><td><code>$bizplan-review</code> / <code>/bizplan-review</code></td></tr>
+                <tr><td><code>bizplan-revise</code></td><td>검토·평가의견을 문서 전체에 일관되게 반영</td><td><code>$bizplan-revise</code> / <code>/bizplan-revise</code></td></tr>
+                <tr><td><code>bizplan-preflight</code></td><td>제출 직전 빈칸·형식·수치·도표·파일명 점검</td><td><code>$bizplan-preflight</code> / <code>/bizplan-preflight</code></td></tr>
+                <tr><td><code>bizplan-evidence-update</code></td><td>배포자가 검증된 새 근거를 스킬에 반영할 때</td><td>일반 팀원은 실행하지 않고 Form 접수</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="card">
+          <h3>프로젝트 준비</h3>
+          <div class="code-wrap">
+            <button class="copy-button" type="button">복사</button>
+            <pre><code>$bizplan-prepare를 사용해서 현재 프로젝트 폴더를 사업계획서 작성 작업공간으로 준비해줘. 기존 파일은 이동하거나 덮어쓰지 마.</code></pre>
+          </div>
+        </article>
+
+        <article class="card">
+          <h3>초안 작성</h3>
+          <div class="code-wrap">
+            <button class="copy-button" type="button">복사</button>
+            <pre><code>$bizplan-draft를 사용해 공고문·RFP·양식을 먼저 분석해줘. 바로 큰 틀만 쓰지 말고 아이디어와 구현 방식이 부족하면 먼저 질문해줘. 내 답변을 과업, 연차, KPI, 실증, 사업화 구조로 다듬은 뒤 DOCX 초안을 작성해줘.</code></pre>
+          </div>
+        </article>
+
+        <article class="card">
+          <h3>검토 → 수정 → 제출점검</h3>
+          <ul class="checklist">
+            <li><code>bizplan-review</code>로 치명적 누락과 논리·수치 불일치 확인</li>
+            <li><code>bizplan-revise</code>로 목표·KPI·연차·역할·표를 함께 수정</li>
+            <li><code>bizplan-preflight</code>로 제출 직전 상태 확인</li>
+            <li>마지막 제출은 담당자가 공식 자료와 대조 후 승인</li>
+          </ul>
+        </article>
+
+        <article class="card">
+          <h3>업데이트 요청문</h3>
+          <div class="code-wrap">
+            <button class="copy-button" type="button">복사</button>
+            <pre><code>AX1 Bizplan을 최신 안정 버전으로 업데이트해줘. 기존 버전을 백업하고 6개 스킬을 함께 교체한 뒤 업데이트 전후 버전, 변경된 스킬과 검증 결과를 알려줘.</code></pre>
+          </div>
+        </article>
+      </div>
+
+      <div class="callout safe">
+        <strong>개선 요청:</strong> 사용한 에이전트·스킬·버전, 실제 결과, 기대 결과와 사람이 보완한 내용을 <a href="https://forms.gle/GG6GYrgboA4pnkVE6" target="_blank" rel="noreferrer">개선 요청 Form</a>에 적습니다.
+      </div>
+      <div class="callout danger">
+        <strong>입력 금지:</strong> 실제 사업계획서 내용, 기관명, 개인정보, 미공개 RFP·평가의견과 계정정보는 Form이나 GitHub에 직접 입력하지 않습니다.
+      </div>
+    </section>
+
+    <section id="maintainer-guide" class="guide-panel" role="tabpanel" aria-labelledby="maintainer-tab">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">For Maintainer · AX1_JM</p>
+          <h2>배포자 운영 안내</h2>
+          <p>상시 접수하되, 검증된 변경을 일정 단위로 묶어 안정 버전으로 배포합니다.</p>
+        </div>
+      </div>
+
+      <div class="card-grid">
+        <article class="card">
+          <h3>권장 운영 주기</h3>
+          <div class="flow" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+            <div class="flow-item"><span class="flow-no">1</span><strong>상시</strong><small>Form 접수</small></div>
+            <div class="flow-item"><span class="flow-no">2</span><strong>주 1회</strong><small>분류·추가정보</small></div>
+            <div class="flow-item"><span class="flow-no">3</span><strong>2~4주</strong><small>일반 릴리스</small></div>
+          </div>
+          <p>업무 중단 수준의 오류만 검증 후 패치 버전으로 즉시 배포합니다.</p>
+        </article>
+
+        <article class="card">
+          <h3>운영 바로가기</h3>
+          <ul class="checklist">
+            <li><a href="https://docs.google.com/spreadsheets/d/18VbGQ4ofPvqrTujPDSwcatgOiBWrbrcr_afOqd8T1Sg/edit" target="_blank" rel="noreferrer">응답 관리 시트</a></li>
+            <li><a href="https://drive.google.com/drive/folders/1phJEIHpeJvLnRPNn6YxogUDxjL4knlUv" target="_blank" rel="noreferrer">AX1 관리 Drive</a></li>
+            <li><a href="https://drive.google.com/drive/folders/1YvjZxSAYpI1nDDvXmGSIztazosajhnJU" target="_blank" rel="noreferrer">원본근거 제한 폴더</a></li>
+            <li><a href="https://github.com/RealMyeong/ax1-bizplan/releases" target="_blank" rel="noreferrer">GitHub Releases</a></li>
+          </ul>
+        </article>
+
+        <article class="card span-2">
+          <h3>접수 상태 관리</h3>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>상태</th><th>판단</th><th>다음 조치</th></tr></thead>
+              <tbody>
+                <tr><td>신규</td><td>미확인 요청</td><td>버전·대상 스킬·민감정보 확인</td></tr>
+                <tr><td>추가정보 필요</td><td>재현 조건 또는 근거 부족</td><td>요청자에게 필요한 정보만 추가 요청</td></tr>
+                <tr><td>검토 중</td><td>중복·영향 범위·재현성 확인</td><td>범용 규칙과 특정 사례 분리</td></tr>
+                <tr><td>채택 / 보류</td><td>수정 확정 또는 근거 축적 대기</td><td>채택 건만 익명화해 Issue 준비</td></tr>
+                <tr><td>GitHub 이관 / 수정 중</td><td>Issue와 작업 브랜치 연결</td><td>담당자·완료 조건·테스트 기록</td></tr>
+                <tr><td>릴리스 완료</td><td>팀 안내와 배포 완료</td><td>반영 버전·Release 링크 기록</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </div>
+
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">Release Pipeline</p>
+          <h2>수정·검증·릴리스</h2>
+        </div>
+      </div>
+
+      <div class="card-grid">
+        <article class="card">
+          <h3>1. 작업 브랜치</h3>
+          <div class="code-wrap">
+            <button class="copy-button" type="button">복사</button>
+            <pre><code>git switch main
+git pull --ff-only
+git switch -c fix/간단한-작업명</code></pre>
+          </div>
+          <p>신규 근거를 반영할 때는 <code>bizplan-evidence-update</code>로 단일 사례 편향과 기존 규칙 충돌을 먼저 확인합니다.</p>
+        </article>
+
+        <article class="card">
+          <h3>2. 버전 결정</h3>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>변경</th><th>버전</th></tr></thead>
+              <tbody>
+                <tr><td>오류·호환되는 소규모 개선</td><td>패치</td></tr>
+                <tr><td>새 기능·워크플로·스킬</td><td>마이너</td></tr>
+                <tr><td>설치·사용법 호환성 단절</td><td>메이저</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p><code>VERSION</code>, 플러그인 버전, 변경 스킬 버전과 <code>CHANGELOG.md</code>를 함께 맞춥니다.</p>
+        </article>
+
+        <article class="card">
+          <h3>3. 검증·패키징</h3>
+          <div class="code-wrap">
+            <button class="copy-button" type="button">복사</button>
+            <pre><code>python scripts/build_release.py
+git status --short
+git diff --check
+git diff</code></pre>
+          </div>
+          <p>전체 ZIP, 개별 스킬 ZIP, 체크섬과 저장 금지 자료 포함 여부를 확인합니다.</p>
+        </article>
+
+        <article class="card">
+          <h3>4. 태그·자동 Release</h3>
+          <div class="code-wrap">
+            <button class="copy-button" type="button">복사</button>
+            <pre><code>git switch main
+git pull --ff-only
+git tag vX.Y.Z
+git push origin main
+git push origin vX.Y.Z</code></pre>
+          </div>
+          <p>태그는 <code>VERSION</code> 앞에 <code>v</code>를 붙인 값과 같아야 합니다.</p>
+        </article>
+
+        <article class="card span-2">
+          <h3>GitHub Issue 전환 기준</h3>
+          <ul class="checklist">
+            <li>버전과 대상 스킬이 식별됨</li>
+            <li>입력·실제 결과·기대 결과가 구분됨</li>
+            <li>재현되거나 공식 근거가 충분함</li>
+            <li>범용 규칙 또는 사업 프로파일로 분리 가능함</li>
+            <li>기관명·개인정보·미공개 원문이 제거됨</li>
+            <li>완료 조건과 검증 방법이 정의됨</li>
+          </ul>
+          <div class="callout danger">원본은 제한 Drive에서만 관리합니다. GitHub에는 익명화된 판단 규칙, 재현 요청문과 테스트만 남깁니다.</div>
+        </article>
+
+        <article class="card span-2">
+          <h3>팀 공지문</h3>
+          <div class="code-wrap">
+            <button class="copy-button" type="button">복사</button>
+            <pre><code>[AX1 Bizplan vX.Y.Z 배포]
+
+주요 변경
+- 변경사항 1
+- 변경사항 2
+
+대상
+- AX1 Bizplan을 사용하는 모든 팀원
+
+업데이트 방법
+Codex 또는 Claude에게 "AX1 Bizplan을 최신 안정 버전으로 업데이트하고 기존 버전을 백업한 뒤 설치 결과를 검증해줘"라고 요청하세요.
+
+GitHub: https://github.com/RealMyeong/ax1-bizplan/releases/tag/vX.Y.Z
+GitHub 접근이 없으면 공유 드라이브의 ax1-bizplan-vX.Y.Z.zip을 사용하세요.
+
+오류·개선 요청: https://forms.gle/GG6GYrgboA4pnkVE6</code></pre>
+          </div>
+        </article>
+      </div>
+
+      <div class="callout safe">
+        <strong>릴리스 완료 후:</strong> 응답 관리 시트에 <code>릴리스 완료</code>, Issue·Release 링크, 반영 버전과 검증 결과를 기록합니다.
+      </div>
+      <div class="callout">
+        <strong>GitHub 계정이 없는 팀원:</strong> Release의 전체 ZIP과 <code>SHA256SUMS.txt</code>를 공유 Drive 배포 폴더에 그대로 올립니다. 문제 버전은 덮어쓰지 않고 이전 Release로 롤백한 뒤 새 패치 버전으로 수정합니다.
+      </div>
+    </section>
+
+    <footer>
+      <strong>AX1 Bizplan</strong> · 저장소에는 스킬과 익명화된 근거만 보관합니다.<br>
+      공식 참고: <a href="https://learn.chatgpt.com/docs/build-skills" target="_blank" rel="noreferrer">OpenAI Build skills</a> · <a href="https://code.claude.com/docs/en/skills" target="_blank" rel="noreferrer">Claude Code Skills</a>
+    </footer>
+  </main>
+
+  <script>
+    const tabs = document.querySelectorAll('[role="tab"]');
+    const panels = document.querySelectorAll('[role="tabpanel"]');
+
+    tabs.forEach((tab) => {
+      tab.addEventListener('click', () => {
+        tabs.forEach((item) => item.setAttribute('aria-selected', String(item === tab)));
+        panels.forEach((panel) => panel.classList.toggle('is-active', panel.id === tab.dataset.target));
+        window.scrollTo({ top: document.querySelector('.audience-switch').offsetTop - 8, behavior: 'smooth' });
+      });
+    });
+
+    document.querySelectorAll('.copy-button').forEach((button) => {
+      button.addEventListener('click', async () => {
+        const text = button.nextElementSibling.innerText;
+        try {
+          await navigator.clipboard.writeText(text);
+          button.textContent = '복사됨';
+          button.classList.add('copied');
+          window.setTimeout(() => {
+            button.textContent = '복사';
+            button.classList.remove('copied');
+          }, 1600);
+        } catch (error) {
+          const range = document.createRange();
+          range.selectNodeContents(button.nextElementSibling);
+          const selection = window.getSelection();
+          selection.removeAllRanges();
+          selection.addRange(range);
+        }
+      });
+    });
+  </script>
+</body>
+</html>

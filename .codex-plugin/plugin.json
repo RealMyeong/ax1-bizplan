@@ -1,6 +1,6 @@
 {
   "name": "ax1-bizplan",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "AX1 팀의 국가 R&D·공모 사업계획서 작성, HWPX 반영, 검토, 수정 및 제출 점검 스킬 모음",
   "author": {
     "name": "AX1 Team"

@@ -19,7 +19,7 @@ GitHub 접근 권한이 없는 팀원에게는 배포자가 최신 Release ZIP�
 | 스킬 | 용도 |
 |---|---|
 | `bizplan-prepare` | 표준 작업공간과 준비현황 체크리스트 생성 |
-| `bizplan-draft` | 아이디어·구현방식 구체화 및 신규 초안 작성 |
+| `bizplan-draft` | 대화형 사업 설계, 양식 배분 및 밀도 있는 신규 초안 작성 |
 | `bizplan-hwpx` | 확정 문안을 HWPX 양식에 반영하고 한컴 검증 |
 | `bizplan-review` | 평가위원 관점 사전 검토와 교정문안 작성 |
 | `bizplan-revise` | 검토의견 반영과 관련 항목 전역 동기화 |
@@ -64,7 +64,7 @@ docs/            팀 운영 양식
 - 변경은 짧은 작업 브랜치에서 검토한 뒤 `main`에 합칩니다.
 - 저장소 버전은 루트 `VERSION`과 `.codex-plugin/plugin.json`에 동일하게 기록합니다.
 - 개별 스킬 버전은 각 `SKILL.md`의 `metadata.version`으로 별도 관리합니다.
-- 릴리스 태그는 `v0.5.0` 형식으로 생성합니다.
+- 릴리스 태그는 `vX.Y.Z` 형식으로 생성합니다.
 
 ## 검증 및 패키징
 

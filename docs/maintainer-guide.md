@@ -143,6 +143,7 @@ python scripts/build_release.py
 - `dist/RELEASE_NOTES.md`의 주요 변경사항·설치 파일·포함 스킬 버전
 - 실제 RFP, 계획서, 평가의견, 산출물이 ZIP에 포함되지 않았는지
 - 변경된 스킬의 대표 요청문과 경계 사례가 기대대로 동작하는지
+- `bizplan-draft` 변경이면 전체 초안 요청이 첫 회차 질문 후 멈추는지, 부분 답변 뒤 설계 보드와 다음 질문을 갱신하는지, 명시적 즉시 작성만 가정 기반으로 진행하는지
 - HWPX 변경이면 `mcp_server_health()`의 코어·자동화·플러그인 버전과 도구 표면이 기준 조합과 일치하는지
 - HWPX 원본 SHA-256이 유지되고 dry-run·semantic diff·open-safety·readback이 통과하는지
 - Windows 한컴에서 모든 페이지를 열어 확인하고 화면 증거를 남겼는지

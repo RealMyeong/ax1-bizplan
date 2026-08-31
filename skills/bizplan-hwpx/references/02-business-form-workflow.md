@@ -4,12 +4,15 @@
 
 | 상황 | 권장 경로 |
 |---|---|
+| 승인된 AX1 표지 템플릿 + 확정 Markdown으로 새 산출물 생성 | `build_headless_artifact.py` → `check_headless_artifact.py` → upstream 구조 검증 → 프리뷰·한컴 관찰 |
 | 공식 HWPX 양식의 필드·표·본문 빈칸 채움 | `get_document_map` → `analyze_form_fill` → dry-run → `apply_form_fill`의 `verificationReceipt` → readback |
 | 이미 위치가 확정된 본문·표 셀의 복합 편집 | canonical path 확인 → `apply_document_commands` dry-run → commit |
 | 단일 명확한 텍스트 치환 | 전용 치환 도구의 dry-run → commit |
 | 제출기관이 허용한 자유양식 새 문서 | `validate_document_plan` → `create_document_from_plan` |
 | 바이너리 HWP | 한컴에서 HWPX 사본으로 변환 후 다시 시작 |
 | MCP 사용 불가·긴급 작성 | DOCX 대안 생성 후 HWPX 미검증 상태 명시 |
+
+경량 경로는 포함된 템플릿 매니페스트의 SHA-256이 일치할 때만 사용함. 본문과 표 셀 줄간격은 모두 160%이며, 임의 양식이나 기존 문서를 경량 스크립트로 재서식하지 않음
 
 일반 사업계획서 양식 채움을 여러 저수준 셀 편집으로 쪼개지 않음. 전문 form-fill 경로가 지원하는 경우 한 계획과 한 트랜잭션으로 처리함
 

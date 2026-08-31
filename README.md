@@ -9,6 +9,7 @@ AX1 팀의 국가 R&D·공모 사업계획서 업무를 위한 배포 전용 저
 | 전체 안내 | [HTML 안내문](docs/ax1-bizplan-guide.html) |
 | 팀원 | [설치·활용·업데이트 안내](docs/team-guide.md) |
 | 배포자 | [개선 접수·개발·릴리스 운영 안내](docs/maintainer-guide.md) |
+| 기여자·PR | [기여 안내](CONTRIBUTING.md) · [PR 운영 원칙](docs/pr-operating-policy.md) |
 | 개선 요청 | [AX1 사업계획서 스킬 개선 요청 Form](https://forms.gle/GG6GYrgboA4pnkVE6) |
 | 배포 파일 | [GitHub Releases](https://github.com/RealMyeong/ax1-bizplan/releases) |
 
@@ -20,7 +21,7 @@ GitHub 접근 권한이 없는 팀원에게는 배포자가 최신 Release ZIP�
 |---|---|
 | `bizplan-prepare` | 표준 작업공간, 준비현황과 이전버전 보관함 생성 |
 | `bizplan-draft` | 대화형 사업 설계, 양식 배분 및 밀도 있는 신규 초안 작성 |
-| `bizplan-hwpx` | 확정 문안을 HWPX 양식에 반영하고 한컴 검증 |
+| `bizplan-hwpx` | 승인 템플릿 경량 HWPX 생성, 공식 양식 반영과 한컴 검증 |
 | `bizplan-review` | 평가위원 관점 사전 검토와 교정문안 작성 |
 | `bizplan-revise` | 검토의견 반영과 관련 항목 전역 동기화 |
 | `bizplan-preflight` | 제출 직전 형식·수치·도표·버전 최종 점검 |
@@ -32,9 +33,11 @@ GitHub 접근 권한이 없는 팀원에게는 배포자가 최신 Release ZIP�
 
 설명이 다르면 수정할 내용을 알려주면 됩니다. 에이전트는 바뀐 이해 내용을 다시 제시하고 재확인을 기다립니다. 작업 중 목적·수정 대상·산출물이 실질적으로 달라질 때도 같은 방식으로 재확인하며, 초안 구현 브리프 확정·HWPX 실제 반영·외부 배포 같은 후속 승인은 별도로 유지합니다.
 
-## HWPX 선행 설치
+## HWPX 사용 방식
 
-`bizplan-hwpx`는 HWPX 엔진을 저장소에 복제하지 않고 [airmang/hwpx-plugins](https://github.com/airmang/hwpx-plugins)를 별도 의존성으로 사용합니다. HWPX를 사용하는 팀원은 한 번만 다음 플러그인을 설치하고 Codex 또는 Claude를 다시 시작합니다.
+승인된 AX1 표지 템플릿에 확정 Markdown을 넣어 새 산출물을 만드는 경량 모드는 Python 표준 라이브러리만 사용합니다. 한컴오피스·COM·pyhwpx를 실행하지 않아 창이나 승인 팝업 없이 생성할 수 있고, 본문과 표 셀 줄간격을 모두 160%로 적용합니다.
+
+공식 양식의 빈칸 채움, 기존 HWPX 수정, 다중 섹션·그림·병합 셀 등은 [airmang/hwpx-plugins](https://github.com/airmang/hwpx-plugins)를 별도 의존성으로 사용합니다. 이 기능이 필요한 팀원은 한 번만 다음 플러그인을 설치하고 Codex 또는 Claude를 다시 시작합니다.
 
 ```powershell
 codex plugin marketplace add airmang/hwpx-plugins --ref b7ab90a1db826c5fa5db024ad01dc5132d073953
@@ -48,6 +51,8 @@ claude plugin install hwpx-plugin@hwpx
 
 Windows에서는 `uvx`가 PATH에 있어야 하며, 실제 제출 후보는 한컴오피스에서 전체 페이지를 다시 확인해야 합니다. AX1 검증 기준 조합은 source ref `b7ab90a1db826c5fa5db024ad01dc5132d073953`, `python-hwpx 6.2.1`, `python-hwpx-automation 7.0.2`, `hwpx-plugin 2.0.1`입니다.
 
+경량 모드도 실제 한컴 조판을 대신하지 않습니다. 생성 후 구조·readback·프리뷰를 검사하고 제출 후보는 한컴에서 전체 페이지를 확인합니다.
+
 ## 저장소 구성
 
 ```text
@@ -57,6 +62,7 @@ shared/          공통 코어, 사업 프로파일, 익명화·요약 근거
 examples/        회귀 테스트 예시
 scripts/         검증 및 릴리스 패키지 생성 도구
 docs/            팀 운영 양식
+.changes/        팀원 PR의 사용자 영향 변경 조각
 ```
 
 ## 운영 흐름
@@ -69,12 +75,13 @@ docs/            팀 운영 양식
 
 - `main`에는 팀에서 사용할 수 있는 안정 상태만 유지합니다.
 - 변경은 짧은 작업 브랜치에서 검토한 뒤 `main`에 합칩니다.
+- 팀원과 팀원 에이전트는 [기여 안내](CONTRIBUTING.md)와 [PR 운영 원칙](docs/pr-operating-policy.md)을 따릅니다. 기여 PR은 `.changes/`에 변경 조각을 추가하고 버전·태그·릴리즈 파일은 수정하지 않습니다.
 - 저장소 버전은 루트 `VERSION`과 `.codex-plugin/plugin.json`에 동일하게 기록합니다.
 - 개별 스킬 버전은 각 `SKILL.md`의 `metadata.version`으로 별도 관리합니다.
 - 릴리스 태그는 `vX.Y.Z` 형식으로 생성합니다.
 - v0.7.0 이후 변경사항은 먼저 `CHANGELOG.md`의 `Unreleased`에 누적하며, 커밋이나 개선 요청마다 태그를 만들지 않습니다.
 - 기존 스킬의 호환 가능한 질문·출력·템플릿·안전·검증 개선은 패치를 기본으로 하고, 새 스킬·새 필수 의존성·팀 사용법의 실질적 전환일 때만 관리자가 마이너를 승인합니다.
-- `VERSION`, 플러그인·개별 스킬 버전과 태그는 배포 묶음이 확정될 때 한 번에 올립니다. 현재 기준선 다음 일반 배포의 기본 후보는 `v0.7.2`입니다.
+- `VERSION`, 플러그인·개별 스킬 버전과 태그는 배포 묶음이 확정될 때 한 번에 올립니다. 현재 안정 버전은 `v0.7.2`이며 다음 호환 개선 묶음은 기본적으로 패치 후보로 둡니다.
 
 ## 프로젝트 산출물 버전 운영
 
@@ -111,7 +118,7 @@ Claude에서는 같은 저장소의 `skills/`를 `~/.claude/skills/`에 설치�
 - 실제 사업계획서와 발표자료 원본
 - 공개되지 않은 RFP, 평가의견서, 계약·고객 자료
 - 개인정보, 계정정보, API 키와 인증서
-- 작업 중간파일과 자동 생성된 DOCX·HWP·HWPX·PDF
+- 작업 중간파일과 자동 생성된 DOCX·HWP·HWPX·PDF. 단, 매니페스트 SHA-256과 익명화 검사를 통과한 `bizplan-hwpx` 승인 템플릿 한 개는 예외
 
 새 사례에서 얻은 내용은 원문을 올리는 대신 `docs/feedback-intake-template.md`로 정리하고, 재사용 가능한 규칙·테스트만 저장소에 반영합니다.
 

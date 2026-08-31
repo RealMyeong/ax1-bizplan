@@ -1,9 +1,9 @@
 ---
 name: bizplan-hwpx
-description: 확정된 국가 R&D·공모 사업계획서 내용을 HWPX 양식에 안전하게 반영하고 원본 보존, 모의 편집, 구조·텍스트 검증, 페이지 프리뷰와 한컴 재개방 확인을 수행한다. 사용자가 한글 양식, HWPX 작성본·수정본·제출본을 요청할 때 사용한다. 사업 아이디어 구체화나 본문 초안 작성만 필요한 경우에는 bizplan-draft를 사용하고, 바이너리 HWP 직접 편집에는 사용하지 않는다.
+description: 확정된 국가 R&D·공모 사업계획서 내용을 HWPX 양식에 안전하게 반영하거나 승인된 AX1 템플릿에서 한컴오피스·COM 없이 경량 HWPX를 생성하고, 원본 보존·구조·텍스트·페이지·한컴 재개방을 검증한다. 사용자가 한글 양식, HWPX 작성본·수정본·제출본을 요청할 때 사용한다. 사업 아이디어 구체화나 본문 초안 작성만 필요한 경우에는 bizplan-draft를 사용하고, 바이너리 HWP 직접 편집에는 사용하지 않는다.
 metadata:
-  version: "0.2.1"
-  architecture: "ax1-policy-wrapper-over-hwpx-plugin"
+  version: "0.3.0"
+  architecture: "ax1-policy-wrapper-with-approved-stdlib-builder"
   updated: "2026-08-31"
 ---
 
@@ -19,8 +19,10 @@ AX1 사업계획서의 내용 판단과 HWPX 문서 편집을 분리하고, 검�
 
 - 사업 내용이 비어 있거나 구현 방식이 미확정이면 먼저 `bizplan-draft`로 구체화함
 - 검토의견 반영 문안이 필요한 경우 `bizplan-revise`, 제출 전 내용·형식 최종점검은 `bizplan-preflight`와 함께 사용함
-- 실제 HWPX 읽기·생성·편집은 별도 설치된 upstream `hwpx` 스킬과 `python-hwpx-automation` MCP를 1차 경로로 사용함
-- upstream 코드를 복제하거나 raw ZIP/XML을 직접 편집해 문서 충실도를 주장하지 않음
+- 임의·공식 HWPX 양식의 읽기·생성·편집은 별도 설치된 upstream `hwpx` 스킬과 `python-hwpx-automation` MCP를 1차 경로로 사용함
+- 승인된 AX1 표지 템플릿에서 확정 Markdown으로 새 문서를 만들 때만 `scripts/build_headless_artifact.py` 경량 모드를 사용할 수 있음. 이 모드는 표준 라이브러리만 사용해 한컴오피스·COM·pyhwpx 창이나 승인 팝업을 실행하지 않음
+- 경량 모드는 매니페스트 SHA-256과 일치하는 단일 섹션 템플릿에 한정함. 임의 기존 문서 재서식, 다중 섹션, 암호화·전자서명, 그림·병합 셀·각주·변경추적은 upstream 경로로 전환함
+- upstream 코드를 복제하지 않으며, 경량 모드의 제한된 ZIP/XML 생성 결과를 범용·exact HWPX 편집이나 실제 한컴 조판 검증으로 주장하지 않음
 - `.hwp`는 직접 편집하지 않음. 한컴오피스에서 `.hwpx`로 변환한 사본을 받은 뒤 진행함
 - upstream 플러그인이나 MCP가 준비되지 않았으면 설치·재시작 필요 상태를 보고하고, 사용자가 허용한 경우에만 설치함. 긴급 산출물은 DOCX 대안을 제시함
 - HWPX의 확정 내용이 다른 현재 산출물과 의미상 달라지면 [최신 산출물 간 내용 연동](references/06-artifact-synchronization.md)을 적용함. HWPX에서만 발견된 고유 값은 승인된 원장이나 계획서로 자동 역전파하지 않음
@@ -28,15 +30,18 @@ AX1 사업계획서의 내용 판단과 HWPX 문서 편집을 분리하고, 검�
 # 시작 점검
 
 1. 입력 파일이 `.hwpx`인지, 바이너리 `.hwp`인지 확인함
-2. `scripts/check_hwpx_environment.ps1`을 실행해 `uvx`, 플러그인, 한컴 뷰어와 렌더 큐 상태를 확인함
-3. MCP가 연결되어 있으면 `mcp_server_health()`를 호출해 다음을 기록함
+2. 요청이 승인 AX1 템플릿에서 새 문서를 만드는 경량 모드인지, 임의·공식 양식을 편집하는 upstream 모드인지 결정함
+3. upstream 모드이면 `scripts/check_hwpx_environment.ps1`을 실행해 `uvx`, 플러그인, 한컴 뷰어와 렌더 큐 상태를 확인함
+4. upstream 모드이고 MCP가 연결되어 있으면 `mcp_server_health()`를 호출해 다음을 기록함
    - `version`
    - `pythonHwpxVersion`
    - `skillBundleVersion`
    - `toolSurface.status == "ok"`
    - `toolSurface.missingKeyTools == []`
-4. 호환 버전과 설치 절차가 필요하면 [upstream 호환성](references/01-upstream-compatibility.md)을 읽음
-5. 기준 양식, 작성할 항목, 확정 문안, 미확정 표시, 산출물군·현재본, 출력 위치와 제출 형식을 확인함
+5. 호환 버전과 설치 절차가 필요하면 [upstream 호환성](references/01-upstream-compatibility.md)을 읽음
+6. 기준 양식, 작성할 항목, 확정 문안, 미확정 표시, 산출물군·현재본, 출력 위치와 제출 형식을 확인함
+
+경량 모드는 upstream 환경이 없어도 생성할 수 있지만, 확정 Markdown·표지 정보 6종·출력 경로가 모두 있어야 하며 사용자 이해 확인 게이트를 생략하지 않음
 
 핵심 도구가 없거나 버전 표면이 불일치하면 문서 작업을 시작하지 않고 새 작업에서 재확인함
 
@@ -62,6 +67,7 @@ AX1 사업계획서의 내용 판단과 HWPX 문서 편집을 분리하고, 검�
 
 [사업계획서 HWPX 양식 작업](references/02-business-form-workflow.md)을 읽고 요청 유형에 맞는 경로를 선택함
 
+- 승인 AX1 템플릿에서 새 산출물 생성: [경량 서식 규칙](references/08-headless-format-rules.md), [안전 경계](references/09-headless-architecture.md), [템플릿 경계](references/10-headless-template-boundary.md), [생성 절차](references/11-headless-authoring.md)를 읽고 `build_headless_artifact.py`를 사용함
 - 기존 양식 채움: `get_document_map`으로 제목·표·필드·앵커·revision을 확보함
 - 낯선 혼합 양식: `analyze_form_fill`로 native field, 라벨 셀, canonical path와 본문 앵커를 포함한 하나의 계획을 만듦
 - 확정 좌표의 복합 편집: canonical path를 확정한 뒤 `apply_document_commands`를 사용함
@@ -73,6 +79,7 @@ AX1 사업계획서의 내용 판단과 HWPX 문서 편집을 분리하고, 검�
 ## 4. 모의 편집 후 확정
 
 - 지원되는 모든 쓰기 경로는 먼저 dry-run을 수행함
+- 경량 생성은 승인 템플릿 SHA-256 검증과 임시 출력 전체 자동검사를 dry-run에 대응하는 사전 게이트로 사용하고, 검사를 통과한 파일만 최종 경로에 원자적으로 둠
 - `semanticDiff`에서 의도한 문단·셀·표만 바뀌는지 확인하고, 사업 내용 변경과 조판·서식만의 변경을 구분함
 - dry-run과 commit은 서로 다른 idempotency key를 사용하고, commit 재시도에만 같은 key를 재사용함
 - 읽기 단계에서 받은 `expected_revision`을 commit에 전달함
@@ -119,6 +126,7 @@ AX1 사업계획서의 내용 판단과 HWPX 문서 편집을 분리하고, 검�
 - 반영한 항목·표·셀과 미반영 항목
 - dry-run의 주요 semantic diff와 commit 결과
 - 패키지·문서·재개방·open-safety·readback 결과
+- 사용한 처리 모드, 경량 모드이면 승인 템플릿 ID·SHA-256과 본문·표 셀 160% 검사 결과
 - 프리뷰 및 한컴 실제 관찰 상태와 증거 파일
 - 남은 자료 필요·결정 필요·사람 승인 항목
 
@@ -127,7 +135,9 @@ AX1 사업계획서의 내용 판단과 HWPX 문서 편집을 분리하고, 검�
 - 원본 HWPX·HWP 직접 덮어쓰기
 - `.docx`의 확장자만 `.hwp` 또는 `.hwpx`로 변경
 - 바이너리 `.hwp` 직접 편집 또는 HWP 편집 가능하다고 주장
-- raw ZIP/XML 편집 결과를 exact·원본 보존으로 표현
+- 경량 모드의 제한된 ZIP/XML 결과를 범용·exact HWPX 편집이나 실제 한컴 검증 완료로 표현
+- 체크박스·선택 상태 기호를 의미가 다른 문자로 자동 치환
+- 경량 모드로 임의 템플릿·기존 문서·다중 섹션·암호화·전자서명 HWPX를 처리
 - dry-run 없이 복합 편집 확정
 - open-safety 실패, rollback, 잔여 필수 플레이스홀더가 있는 파일 전달
 - 프리뷰나 파일 열기만으로 `실한컴 검증 완료` 또는 `제출 준비 완료`라고 보고

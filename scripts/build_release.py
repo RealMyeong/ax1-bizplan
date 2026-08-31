@@ -4,12 +4,15 @@
 from __future__ import annotations
 
 import importlib.util
+import ast
 import hashlib
 import json
 import re
 import shutil
+import subprocess
 import sys
 import zipfile
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 
@@ -49,6 +52,17 @@ ALL_SKILLS = (
     *GENERAL_SKILLS,
     "bizplan-hwpx",
     "bizplan-evidence-update",
+)
+
+APPROVED_HWPX_ASSET = Path("skills/bizplan-hwpx/assets/templates/ax1-deliverable-cover.hwpx")
+HWPX_TEMPLATE_MANIFEST = Path("skills/bizplan-hwpx/assets/templates/template-manifest.json")
+CONTRIBUTOR_POLICY_FILES = (
+    "AGENTS.md",
+    "CLAUDE.md",
+    "CONTRIBUTING.md",
+    "docs/pr-operating-policy.md",
+    ".github/PULL_REQUEST_TEMPLATE.md",
+    "scripts/validate_pr.py",
 )
 
 GENERAL_REFERENCES = {
@@ -240,7 +254,9 @@ def validate_no_private_artifacts() -> None:
     forbidden = [
         path.relative_to(ROOT).as_posix()
         for path in SKILLS_ROOT.rglob("*")
-        if path.is_file() and path.suffix.lower() in FORBIDDEN_ARTIFACT_SUFFIXES
+        if path.is_file()
+        and path.suffix.lower() in FORBIDDEN_ARTIFACT_SUFFIXES
+        and path.relative_to(ROOT) != APPROVED_HWPX_ASSET
     ]
     if forbidden:
         raise ValueError(
@@ -250,6 +266,13 @@ def validate_no_private_artifacts() -> None:
 
 
 def validate_confirmation_gate() -> None:
+    if set(CONFIRMATION_REFERENCES) != set(ALL_SKILLS):
+        missing = sorted(set(ALL_SKILLS) - set(CONFIRMATION_REFERENCES))
+        extra = sorted(set(CONFIRMATION_REFERENCES) - set(ALL_SKILLS))
+        raise ValueError(
+            "confirmation gate map must exactly match ALL_SKILLS; "
+            f"missing={missing}, extra={extra}"
+        )
     canonical = (ROOT / "shared" / "core" / "12-user-confirmation-gate.md").read_bytes()
     for skill_name, reference in CONFIRMATION_REFERENCES.items():
         skill = SKILLS_ROOT / skill_name
@@ -265,6 +288,145 @@ def validate_confirmation_gate() -> None:
             raise ValueError(f"{skill_name}: explicit subsequent-turn confirmation is missing")
 
 
+def validate_contributor_policy() -> None:
+    for relative in CONTRIBUTOR_POLICY_FILES:
+        path = ROOT / relative
+        if not path.is_file():
+            raise FileNotFoundError(path)
+    agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    contributing = (ROOT / "CONTRIBUTING.md").read_text(encoding="utf-8")
+    pr_template = (ROOT / ".github" / "PULL_REQUEST_TEMPLATE.md").read_text(encoding="utf-8")
+    for token in ("VERSION", ".changes/", "confirmation gate", "HWPX"):
+        if token not in agents:
+            raise ValueError(f"AGENTS.md: required contributor rule missing: {token}")
+    for token in ("VERSION", ".changes/", "개인정보", "배포자"):
+        if token not in contributing:
+            raise ValueError(f"CONTRIBUTING.md: required policy missing: {token}")
+    for token in ("본문과 표 셀 줄간격 160%", ".changes/<주제>.md", "한컴 시각 검증"):
+        if token not in pr_template:
+            raise ValueError(f"PR template: required checklist missing: {token}")
+
+
+def validate_headless_scripts_are_stdlib_only() -> None:
+    script_root = SKILLS_ROOT / "bizplan-hwpx" / "scripts"
+    paths = [
+        script_root / "headless_hwpx.py",
+        script_root / "format_headless_artifact.py",
+        script_root / "check_headless_artifact.py",
+        script_root / "build_headless_artifact.py",
+    ]
+    local_modules = {path.stem for path in paths}
+    allowed = set(sys.stdlib_module_names) | local_modules
+    for path in paths:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        imported = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported.update(alias.name.split(".")[0] for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                imported.add(node.module.split(".")[0])
+        external = sorted(imported - allowed)
+        if external:
+            raise ValueError(f"{path.relative_to(ROOT)} imports non-stdlib modules: {external}")
+
+
+def validate_approved_hwpx_asset() -> None:
+    asset = ROOT / APPROVED_HWPX_ASSET
+    manifest_path = ROOT / HWPX_TEMPLATE_MANIFEST
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    expected = {
+        "schemaVersion": "ax1.hwpx-template/v1",
+        "file": asset.name,
+        "sections": 1,
+    }
+    for key, value in expected.items():
+        if manifest.get(key) != value:
+            raise ValueError(f"template manifest: {key} must be {value!r}")
+    actual_sha = hashlib.sha256(asset.read_bytes()).hexdigest()
+    if manifest.get("sha256") != actual_sha:
+        raise ValueError("approved HWPX template SHA-256 mismatch")
+    placeholders = set(manifest.get("placeholders", []))
+    expected_placeholders = {
+        "[발주기관]",
+        "[사업명]",
+        "[과제번호]",
+        "[세부 사업명]",
+        "[산출물 제목]",
+        "[문서 유형]",
+    }
+    if placeholders != expected_placeholders:
+        raise ValueError("template manifest placeholders are incomplete")
+
+    with zipfile.ZipFile(asset) as archive:
+        infos = archive.infolist()
+        if archive.testzip() is not None:
+            raise ValueError("approved HWPX template CRC check failed")
+        if not infos or infos[0].filename != "mimetype" or infos[0].compress_type != zipfile.ZIP_STORED:
+            raise ValueError("approved HWPX template mimetype must be first and stored")
+        if archive.read("mimetype").strip() != b"application/hwp+zip":
+            raise ValueError("approved HWPX template mimetype is invalid")
+        section_names = sorted(
+            info.filename
+            for info in infos
+            if re.fullmatch(r"Contents/section\d+\.xml", info.filename)
+        )
+        if section_names != ["Contents/section0.xml"]:
+            raise ValueError("approved HWPX template must contain one section0.xml")
+        text_parts = []
+        for info in infos:
+            if (info.filename == "mimetype" or info.filename.startswith("BinData/")) and info.compress_type != zipfile.ZIP_STORED:
+                raise ValueError(f"approved HWPX template part must be stored: {info.filename}")
+            if info.filename.lower().endswith((".xml", ".hpf")):
+                data = archive.read(info.filename)
+                ET.fromstring(data)
+                text_parts.append(data.decode("utf-8"))
+            elif info.filename == "Preview/PrvText.txt":
+                text_parts.append(archive.read(info.filename).decode("utf-8"))
+        text = "\n".join(text_parts)
+    for placeholder in expected_placeholders:
+        if placeholder not in text:
+            raise ValueError(f"approved HWPX template placeholder missing: {placeholder}")
+    # 특정 PR 표본값을 검사 코드에 다시 저장하지 않는다. 실제 과제번호 형식과
+    # 개인 작성자 메타데이터를 일반 규칙으로 차단한다.
+    if re.search(r"\b[A-Z]{2,10}-\d{4}-\d{6,12}\b", text):
+        raise ValueError("approved HWPX template contains a filled project number")
+    author_values = re.findall(
+        r'<opf:meta name="(?:creator|lastsaveby)" content="([^"]*)"',
+        text,
+    )
+    if not author_values or any(value != "AX1" for value in author_values):
+        raise ValueError("approved HWPX template author metadata must be AX1")
+    date_values = re.findall(
+        r'<opf:meta name="(?:CreatedDate|ModifiedDate|date)" content="([^"]*)"',
+        text,
+    )
+    if any(value for value in date_values):
+        raise ValueError("approved HWPX template must not retain document dates")
+    pii_patterns = (
+        r"\b\d{6}-[1-4]\d{6}\b",
+        r"\b01[016789]-?\d{3,4}-?\d{4}\b",
+        r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b",
+    )
+    if any(re.search(pattern, text) for pattern in pii_patterns):
+        raise ValueError("approved HWPX template contains high-confidence personal information")
+
+
+def validate_headless_acceptance() -> None:
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "headless_hwpx_acceptance_test.py")],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    if result.returncode != 0:
+        raise ValueError(
+            "headless HWPX acceptance test failed:\n"
+            + result.stdout
+            + result.stderr
+        )
+
+
 def validate_skills() -> dict[str, str]:
     validate_no_private_artifacts()
     versions: dict[str, str] = {}
@@ -276,6 +438,10 @@ def validate_skills() -> dict[str, str]:
         validate_openai_yaml(skill)
         validate_references(skill)
     validate_confirmation_gate()
+    validate_contributor_policy()
+    validate_headless_scripts_are_stdlib_only()
+    validate_approved_hwpx_asset()
+    validate_headless_acceptance()
     validate_lint_examples()
     validate_plugin()
     return versions

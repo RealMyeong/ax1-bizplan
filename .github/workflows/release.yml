@@ -18,11 +18,18 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Validate contributor PR policy
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: python scripts/validate_pr.py --base "${{ github.event.pull_request.base.sha }}"
 
       - name: Validate skills and build packages
         run: python scripts/build_release.py

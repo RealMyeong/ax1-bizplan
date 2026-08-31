@@ -116,18 +116,28 @@ $bizplan-evidence-update를 사용해 제한 Drive의 새 근거를 분석해줘
 
 ## 5. 버전 결정
 
+v0.7.0 이후에는 보수적인 버전 정책을 적용합니다. 변경한 파일 수나 영향받은 스킬 수가 많다는 이유만으로 마이너를 올리지 않으며, 판단이 애매하면 패치를 기본값으로 사용합니다.
+
 | 변경 | 권장 버전 |
 |---|---|
-| 오탈자, 명확한 오류 수정, 호환되는 소규모 개선 | 패치: `0.4.0 → 0.4.1` |
-| 새 스킬, 의미 있는 기능·워크플로 추가 | 마이너: `0.4.0 → 0.5.0` |
-| 설치 방식이나 사용법이 크게 깨지는 변경 | 메이저: `0.x → 1.0.0` 이후 메이저 증가 |
+| 기존 스킬의 질문·출력·템플릿·폴더·체크리스트·안전·검증 개선, 오류 수정, 호환 가능한 워크플로 보완 | 패치: `0.7.0 → 0.7.1` |
+| 새 독립 스킬, 새 필수 외부 의존성·연동, 팀원이 사용법을 다시 익히거나 기존 프로젝트를 이관해야 하는 기본 흐름 전환, 여러 기능을 묶은 뚜렷한 역량 확장 | 마이너: `0.7.x → 0.8.0` |
+| 1.0 안정화 이후 설치·호출·산출물 호환성을 깨는 변경 | 메이저: `1.x → 2.0.0` |
+
+다음 항목은 그 자체로 마이너 사유가 아닙니다.
+
+- 여러 `SKILL.md`가 같은 공통 규칙을 함께 반영함
+- 새 선택형 폴더·이력 필드·검증 항목이 기존 프로젝트와 호환되게 추가됨
+- 구현량이나 변경 파일 수가 많지만 팀원의 요청 방식과 핵심 산출물이 그대로임
+
+마이너 버전은 관리자가 `새 기능군 또는 사용법 전환`이라고 명시적으로 승인한 경우에만 선택합니다. v0.7.0 다음 일반 개선 묶음은 기본적으로 v0.7.1 후보로 둡니다.
 
 다음을 함께 확인합니다.
 
-- 루트 `VERSION`: 전체 묶음 버전
-- `.codex-plugin/plugin.json`: 전체 묶음과 같은 버전
-- 변경된 스킬 `SKILL.md`의 `metadata.version`: 개별 스킬 버전
-- `CHANGELOG.md`: 사용자에게 보이는 변경사항
+- 개발 중 변경은 `CHANGELOG.md`의 `Unreleased`에 누적하고 Git 커밋으로 추적함
+- 배포 묶음과 버전이 승인된 뒤에만 루트 `VERSION`과 `.codex-plugin/plugin.json`을 함께 올림
+- 같은 시점에 실제 변경된 스킬 `SKILL.md`의 `metadata.version`만 올림
+- 승인된 `Unreleased` 항목을 새 버전 구간으로 옮겨 사용자에게 보이는 변경사항을 확정함
 
 ## 6. 검증과 패키징
 
@@ -173,25 +183,38 @@ git diff
 
 변경을 커밋하고 작업 브랜치를 GitHub에 올려 검토한 뒤 `main`에 병합합니다.
 
+커밋·병합과 버전 태그는 분리합니다. 개선 요청 한 건이나 커밋 한 건이 끝날 때마다 태그를 만들지 않고, 일반적으로 2~4주 동안 검증된 변경을 `Unreleased`에 모읍니다. 업무 중단 오류만 별도 패치로 앞당길 수 있습니다.
+
 ```powershell
 git add README.md CHANGELOG.md VERSION .codex-plugin skills shared examples docs scripts
-git commit -m "Update AX1 Bizplan to vX.Y.Z"
+git commit -m "Refine AX1 Bizplan workflow"
 git push -u origin fix/간단한-작업명
 ```
 
-병합 후 태그를 올리면 GitHub Actions가 검증하고 Release 파일을 생성합니다. Release 본문의 `주요 변경사항`은 `CHANGELOG.md`에서 현재 `VERSION`과 같은 버전 구간을 가져오므로, 태그를 만들기 전에 사용자 관점의 핵심 변경을 해당 구간의 글머리표로 정리합니다. 실제 기관명·문서 내용·내부 링크는 릴리스 노트에도 넣지 않습니다.
+다음 조건을 모두 충족한 배포 묶음에만 태그를 올립니다.
+
+- 배포할 변경 목록이 확정되고 대표 회귀 테스트가 통과함
+- 패치·마이너 판단과 버전 번호를 관리자가 승인함
+- `VERSION`, 플러그인 버전, 변경 스킬 버전과 `CHANGELOG.md`가 일치함
+- 팀원에게 지금 업데이트를 안내할 실제 필요가 있음
+
+태그를 올리면 GitHub Actions가 검증하고 Release 파일을 생성합니다. Release 본문의 `주요 변경사항`은 `CHANGELOG.md`에서 현재 `VERSION`과 같은 버전 구간을 가져오므로, 태그를 만들기 전에 사용자 관점의 핵심 변경을 해당 구간의 글머리표로 정리합니다. 실제 기관명·문서 내용·내부 링크는 릴리스 노트에도 넣지 않습니다.
 
 ```powershell
 git switch main
 git pull --ff-only
-git tag vX.Y.Z
+git add VERSION .codex-plugin CHANGELOG.md skills
+git commit -m "Prepare AX1 Bizplan vX.Y.Z"
 git push origin main
+git tag -a vX.Y.Z -m "AX1 Bizplan vX.Y.Z"
 git push origin vX.Y.Z
 ```
 
 태그 값은 반드시 `VERSION` 앞에 `v`를 붙인 값과 같아야 합니다.
 
-`main`에 같은 `VERSION`의 이미 게시된 Release가 있으면 워크플로가 Release 본문만 최신 `RELEASE_NOTES.md`로 갱신합니다. 태그와 ZIP 자산은 바꾸지 않습니다. 기능·스킬 내용이 달라졌다면 기존 Release를 고치지 말고 새 패치 또는 마이너 버전으로 배포합니다.
+문서·정책 정리처럼 배포가 필요하지 않은 변경은 `Unreleased` 상태로 커밋·푸시하고 새 태그를 만들지 않습니다. 이미 게시한 v0.7.0 태그와 자산은 유지합니다.
+
+`main` 푸시는 검증과 `배포 금지 검증 스냅샷` 생성만 수행하며 기존 GitHub Release의 본문·태그·ZIP 자산을 바꾸지 않습니다. 실제 Release는 승인된 새 태그를 푸시할 때만 생성합니다. 이미 게시한 릴리스 노트의 단순 오탈자는 관리자가 명시적으로 정정할 수 있지만, 기능·스킬 내용이 달라졌다면 기존 Release를 고치지 말고 새 패치 또는 승인된 마이너 버전으로 배포합니다.
 
 ## 8. GitHub 계정이 없는 팀원에게 배포
 

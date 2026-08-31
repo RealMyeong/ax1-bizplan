@@ -637,13 +637,13 @@ git switch -c fix/간단한-작업명</code></pre>
             <table>
               <thead><tr><th>변경</th><th>버전</th></tr></thead>
               <tbody>
-                <tr><td>오류·호환되는 소규모 개선</td><td>패치</td></tr>
-                <tr><td>새 기능·워크플로·스킬</td><td>마이너</td></tr>
-                <tr><td>설치·사용법 호환성 단절</td><td>메이저</td></tr>
+                <tr><td>기존 스킬의 호환 가능한 질문·출력·템플릿·폴더·안전·검증 개선</td><td>패치 기본</td></tr>
+                <tr><td>새 독립 스킬·필수 의존성·팀 사용법 전환·뚜렷한 역량 확장</td><td>관리자 승인 후 마이너</td></tr>
+                <tr><td>1.0 이후 설치·호출·산출물 호환성 단절</td><td>메이저</td></tr>
               </tbody>
             </table>
           </div>
-          <p><code>VERSION</code>, 플러그인 버전, 변경 스킬 버전과 <code>CHANGELOG.md</code>를 함께 맞춥니다.</p>
+          <p>v0.7.0 이후에는 영향 파일·스킬 수가 많아도 호환 가능한 기존 기능 개선이면 패치를 기본으로 합니다. 변경은 <code>Unreleased</code>에 누적하고, 새 기능군이나 사용법 전환일 때만 관리자가 마이너를 승인합니다. 다음 일반 배포의 기본 후보는 <code>v0.7.1</code>입니다.</p>
         </article>
 
         <article class="card">
@@ -668,7 +668,7 @@ git tag vX.Y.Z
 git push origin main
 git push origin vX.Y.Z</code></pre>
           </div>
-          <p>태그는 <code>VERSION</code> 앞에 <code>v</code>를 붙인 값과 같아야 합니다. 자동 Release에는 주요 변경사항, 설치 안내와 스킬별 버전이 포함됩니다. 이미 같은 버전의 Release가 있으면 <code>main</code> 검증 시 태그와 첨부 파일은 유지하고 본문만 갱신합니다.</p>
+          <p>커밋마다 태그를 만들지 않습니다. 일반 변경은 2~4주간 <code>Unreleased</code>에 모으고, 테스트·버전 판단·팀 업데이트 필요를 관리자가 승인한 배포 묶음에만 태그를 만듭니다. <code>main</code> 푸시는 배포 금지 검증 스냅샷만 만들고 기존 Release를 수정하지 않습니다. 태그는 <code>VERSION</code> 앞에 <code>v</code>를 붙인 값과 같아야 하며, 이미 게시한 v0.7.0 태그와 자산은 유지합니다.</p>
         </article>
 
         <article class="card span-2">

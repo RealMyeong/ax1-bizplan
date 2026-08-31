@@ -44,6 +44,18 @@ metadata:
 
 양식의 표 음영은 `#D3D3EB`로 본문 규칙 색(`#D9D9D9`)과 다름. **오류가 아니며 표지 구간은 양식 색을 그대로 따름**
 
+# 설치와 단일 원본
+
+이 스킬은 저장소의 `skills/bizplan-artifact-format/` 이 원본임. 어느 폴더에서 작업하든 같은 파일이 쓰이게 하려면 사용자 스킬 폴더를 **저장소로 향하는 링크**로 둠
+
+```powershell
+cmd /c mklink /J "$env:USERPROFILE\.claude\skillsizplan-artifact-format" "<저장소>\skillsizplan-artifact-format"
+```
+
+- 사본으로 복사하면 저장소를 고쳐도 설치본은 낡은 상태로 남음. 링크면 그 문제가 없음
+- 스크립트는 `Path(__file__).resolve()` 로 링크를 따라가 저장소 루트를 찾으므로 `document_form/` 의 표지 양식도 자동으로 찾음
+- 링크가 아닌 사본으로 설치된 환경에서는 `--template` 으로 양식 경로를 직접 줌
+
 # 시작 점검
 
 1. 대상이 `.hwpx`인지 확인함. 바이너리 `.hwp`는 한컴오피스에서 `.hwpx`로 변환한 사본을 받은 뒤 진행함
@@ -58,8 +70,10 @@ metadata:
 기존 문서를 고치는 것이 아니라 **새 산출물을 만들 때**는 먼저 본문을 채움
 
 ```powershell
-python scripts/build_artifact.py --template "<저장소>/document_form/[산출물] 표지 양식.hwpx" --content <본문>.md --title "<문서 제목>" --project "[과제번호 ...] <사업명>" -o <출력>.hwpx
+python <스킬>/scripts/build_artifact.py --content <본문>.md --title "<문서 제목>" --project "[과제번호 ...] <사업명>" -o <출력>.hwpx
 ```
+
+`--template` 은 생략함. 스크립트가 자기 실제 위치에서 위로 올라가며 저장소의 `document_form/` 을 찾음
 
 - 양식의 표지~목차 제목을 그대로 두고 그 뒤에 **목차 항목과 본문**을 이어붙인 뒤 서식 규칙까지 자동 적용함
 - 목차 항목은 마크다운의 장 제목(`# `)에서 자동으로 뽑음. `--no-toc`로 끌 수 있음

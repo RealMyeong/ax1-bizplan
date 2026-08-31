@@ -3,8 +3,7 @@
 `scripts/build_artifact.py` 는 `document_form/` 의 표지 양식을 그대로 두고 **목차 제목 뒤에 목차 항목과 본문을 이어붙인다.** 그런 다음 서식 규칙을 자동으로 적용한다.
 
 ```powershell
-python scripts/build_artifact.py `
-  --template "<저장소>/document_form/[산출물] 표지 양식.hwpx" `
+python <스킬>/scripts/build_artifact.py `
   --content  "<본문>.md" `
   --title    "데이터수집 App 정의서" `
   --project  "[과제번호 RS-XXXX-XXXXXXXX] 사업명" `
@@ -15,6 +14,8 @@ python scripts/build_artifact.py `
 `--no-toc` 를 주면 목차 항목을 만들지 않는다.
 
 한/글이 없어도 동작한다. 표준 라이브러리만 쓴다.
+
+`--template` 을 생략하면 저장소의 `document_form/` 에서 표지 양식을 자동으로 찾는다. 스킬을 `~/.claude/skills/` 에 링크로 설치했으면 **어느 폴더에서 작업해도** 같은 양식을 쓴다. 사본으로 설치했거나 다른 양식을 쓰려면 `--template` 으로 직접 지정한다.
 
 ## 마크다운 규칙
 

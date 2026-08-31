@@ -1,6 +1,6 @@
 """표지 양식에 본문을 채워 산출물 HWPX 를 만든다.
 
-    python build_artifact.py --template <양식.hwpx> --content <본문.md> -o <출력.hwpx>
+    python build_artifact.py --content <본문.md> -o <출력.hwpx> [--template <양식.hwpx>]
 
 양식의 표지~목차 제목은 손대지 않고 그 뒤에 목차 항목과 본문을 이어붙인 뒤,
 서식 규칙을 적용한다. 마크다운 앞부분의 표지·문서정보·개정이력·목차는 양식이
@@ -379,6 +379,24 @@ def plain_border_fill(header: str) -> str:
     raise SystemExit("양식에 테두리 실선 borderFill 이 없다. 표를 만들 수 없다")
 
 
+def default_template():
+    """저장소의 표지 양식을 스스로 찾는다.
+
+    스킬이 `<저장소>/skills/bizplan-artifact-format/` 에 있으므로 스크립트의 실제
+    위치에서 위로 올라가며 `document_form/` 을 찾는다. `~/.claude/skills/` 에
+    정션(심볼릭 링크)으로 설치했더라도 resolve() 가 실제 위치를 따라가므로
+    어느 폴더에서 실행해도 같은 양식을 쓴다.
+    """
+    for parent in Path(__file__).resolve().parents:
+        d = parent / "document_form"
+        if not d.is_dir():
+            continue
+        forms = sorted(d.glob("*.hwpx"))
+        blank = [f for f in forms if "양식" in f.name]
+        return (blank or forms or [None])[0]
+    return None
+
+
 def text_width_of(section: str) -> int:
     m = re.search(r'<hp:pagePr[^>]*width="(\d+)"[^>]*>.*?<hp:margin[^>]*left="(\d+)" right="(\d+)"', section, re.S)
     if not m:
@@ -551,7 +569,8 @@ def build(template: Path, content: Path, out: Path, title="", project="", make_t
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="표지 양식에 본문을 채워 산출물 HWPX 를 만든다")
-    ap.add_argument("--template", required=True, type=Path, help="표지 양식 .hwpx (document_form/)")
+    ap.add_argument("--template", type=Path, default=None,
+                    help="표지 양식 .hwpx. 생략하면 저장소 document_form/ 에서 자동으로 찾음")
     ap.add_argument("--content", required=True, type=Path, help="본문 마크다운")
     ap.add_argument("-o", "--out", required=True, type=Path)
     ap.add_argument("--title", default="", help="표지 제목 자리표시자를 이 글자로 채움")
@@ -559,12 +578,18 @@ def main() -> int:
     ap.add_argument("--no-toc", action="store_true", help="목차 항목을 만들지 않음")
     args = ap.parse_args()
 
-    for p in (args.template, args.content):
+    template = args.template or default_template()
+    if template is None:
+        print("표지 양식을 찾지 못했다. --template 으로 직접 지정할 것")
+        return 2
+    if not args.template:
+        print(f"표지 양식 자동 선택: {template}")
+    for p in (template, args.content):
         if not p.is_file():
             print(f"파일 없음: {p}")
             return 2
 
-    for line in build(args.template, args.content, args.out, args.title, args.project, not args.no_toc):
+    for line in build(template, args.content, args.out, args.title, args.project, not args.no_toc):
         print(line)
     print("\ncheck_artifact_format.py 로 검사하고 한/글에서 직접 열어 확인할 것")
     return 0

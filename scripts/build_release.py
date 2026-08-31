@@ -48,6 +48,7 @@ ALL_SKILLS = (
     "bizplan-prepare",
     *GENERAL_SKILLS,
     "bizplan-hwpx",
+    "bizplan-artifact-format",
     "bizplan-evidence-update",
 )
 

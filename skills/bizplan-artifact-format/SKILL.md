@@ -49,7 +49,7 @@ metadata:
 이 스킬은 저장소의 `skills/bizplan-artifact-format/` 이 원본임. 어느 폴더에서 작업하든 같은 파일이 쓰이게 하려면 사용자 스킬 폴더를 **저장소로 향하는 링크**로 둠
 
 ```powershell
-cmd /c mklink /J "$env:USERPROFILE\.claude\skillsizplan-artifact-format" "<저장소>\skillsizplan-artifact-format"
+cmd /c mklink /J "%USERPROFILE%\.claude\skills\bizplan-artifact-format" "<저장소>\skills\bizplan-artifact-format"
 ```
 
 - 사본으로 복사하면 저장소를 고쳐도 설치본은 낡은 상태로 남음. 링크면 그 문제가 없음

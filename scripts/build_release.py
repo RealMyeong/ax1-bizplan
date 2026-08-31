@@ -60,9 +60,11 @@ GENERAL_REFERENCES = {
     "06-evaluator-lens.md": "shared/core/05-evaluator-lens.md",
     "07-artifact-workflow.md": "shared/core/07-artifact-workflow.md",
     "10-artifact-version-management.md": "shared/core/10-artifact-version-management.md",
+    "11-artifact-synchronization.md": "shared/core/11-artifact-synchronization.md",
 }
 
 GENERAL_ASSETS = {
+    "artifact-sync-ledger-template.md": "shared/templates/artifact-sync-ledger-template.md",
     "artifact-version-ledger-template.md": "shared/templates/artifact-version-ledger-template.md",
     "change-log-template.md": "shared/templates/change-log-template.md",
     "document-style-profile-template.md": "shared/templates/document-style-profile-template.md",
@@ -113,12 +115,28 @@ def sync_shared_resources() -> None:
         SKILLS_ROOT / "bizplan-prepare" / "assets" / "artifact-version-ledger-template.md",
     )
     copy_file(
+        "shared/core/11-artifact-synchronization.md",
+        SKILLS_ROOT / "bizplan-prepare" / "references" / "02-artifact-synchronization.md",
+    )
+    copy_file(
+        "shared/templates/artifact-sync-ledger-template.md",
+        SKILLS_ROOT / "bizplan-prepare" / "assets" / "artifact-sync-ledger-template.md",
+    )
+    copy_file(
         "shared/core/10-artifact-version-management.md",
         SKILLS_ROOT / "bizplan-hwpx" / "references" / "05-artifact-version-management.md",
     )
     copy_file(
         "shared/templates/artifact-version-ledger-template.md",
         SKILLS_ROOT / "bizplan-hwpx" / "assets" / "artifact-version-ledger-template.md",
+    )
+    copy_file(
+        "shared/core/11-artifact-synchronization.md",
+        SKILLS_ROOT / "bizplan-hwpx" / "references" / "06-artifact-synchronization.md",
+    )
+    copy_file(
+        "shared/templates/artifact-sync-ledger-template.md",
+        SKILLS_ROOT / "bizplan-hwpx" / "assets" / "artifact-sync-ledger-template.md",
     )
 
 

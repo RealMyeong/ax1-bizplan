@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
     [ValidateNotNullOrEmpty()]
@@ -58,6 +58,7 @@ $relativeDirectories = @(
 )
 
 $checklistPath = Join-Path -Path $resolvedRoot -ChildPath "사업계획서_준비현황.md"
+$syncLedgerPath = Join-Path -Path $resolvedRoot -ChildPath "산출물_연동현황.md"
 $versionLedgerPath = Join-Path -Path $resolvedRoot -ChildPath "98_이전버전\산출물_버전이력.md"
 $conflicts = [System.Collections.Generic.List[string]]::new()
 
@@ -70,6 +71,9 @@ foreach ($relativePath in $relativeDirectories) {
 if ([System.IO.Directory]::Exists($checklistPath)) {
     $conflicts.Add($checklistPath)
 }
+if ([System.IO.Directory]::Exists($syncLedgerPath)) {
+    $conflicts.Add($syncLedgerPath)
+}
 if ([System.IO.Directory]::Exists($versionLedgerPath)) {
     $conflicts.Add($versionLedgerPath)
 }
@@ -80,12 +84,16 @@ if ($conflicts.Count -gt 0) {
 }
 
 $checklistAssetPath = [System.IO.Path]::GetFullPath((Join-Path -Path $PSScriptRoot -ChildPath "..\assets\preparation-status-template.md"))
+$syncLedgerAssetPath = [System.IO.Path]::GetFullPath((Join-Path -Path $PSScriptRoot -ChildPath "..\assets\artifact-sync-ledger-template.md"))
 $versionLedgerAssetPath = [System.IO.Path]::GetFullPath((Join-Path -Path $PSScriptRoot -ChildPath "..\assets\artifact-version-ledger-template.md"))
 if (-not [System.IO.File]::Exists($checklistPath) -and -not [System.IO.File]::Exists($checklistAssetPath)) {
     throw "Preparation checklist template is missing: $checklistAssetPath"
 }
 if (-not [System.IO.File]::Exists($versionLedgerPath) -and -not [System.IO.File]::Exists($versionLedgerAssetPath)) {
     throw "Artifact version ledger template is missing: $versionLedgerAssetPath"
+}
+if (-not [System.IO.File]::Exists($syncLedgerPath) -and -not [System.IO.File]::Exists($syncLedgerAssetPath)) {
+    throw "Artifact synchronization ledger template is missing: $syncLedgerAssetPath"
 }
 
 $createdDirectories = [System.Collections.Generic.List[string]]::new()
@@ -120,6 +128,14 @@ if (-not [System.IO.File]::Exists($versionLedgerPath)) {
     $versionLedgerStatus = "created"
 }
 
+$syncLedgerStatus = "existing"
+if (-not [System.IO.File]::Exists($syncLedgerPath)) {
+    $syncLedgerContent = [System.IO.File]::ReadAllText($syncLedgerAssetPath, [System.Text.Encoding]::UTF8)
+    $utf8WithoutBom = [System.Text.UTF8Encoding]::new($false)
+    [System.IO.File]::WriteAllText($syncLedgerPath, $syncLedgerContent, $utf8WithoutBom)
+    $syncLedgerStatus = "created"
+}
+
 $result = [ordered]@{
     root = $resolvedRoot
     created_directories = @($createdDirectories)
@@ -128,6 +144,8 @@ $result = [ordered]@{
     checklist_status = $checklistStatus
     version_ledger_path = $versionLedgerPath
     version_ledger_status = $versionLedgerStatus
+    sync_ledger_path = $syncLedgerPath
+    sync_ledger_status = $syncLedgerStatus
 }
 
 $result | ConvertTo-Json -Depth 4

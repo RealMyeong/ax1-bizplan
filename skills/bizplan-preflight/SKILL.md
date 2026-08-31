@@ -2,7 +2,7 @@
 name: bizplan-preflight
 description: 제출 직전의 국가 R&D·공모 사업계획서와 발표자료를 대상으로 양식, 빈칸, 페이지, 도표, 수치, 용어, 기관, 연차, KPI 증빙, 파일명, 버전과 민감정보를 최종 점검한다. 제출 준비 상태와 마지막 조치 목록이 필요할 때 사용하며, 신규 작성이나 대규모 내용수정에는 사용하지 않는다.
 metadata:
-  version: "0.5.0"
+  version: "0.5.1"
   architecture: "generic-core-plus-project-profile"
   updated: "2026-08-31"
 ---

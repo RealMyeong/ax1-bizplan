@@ -2,7 +2,7 @@
 name: bizplan-draft
 description: 제공된 공고문·RFP·양식과 프로젝트 자료를 기준으로 국가 R&D·공모 사업계획서의 새 항목이나 초안을 작성한다. 전체 초안·빈 양식 작성은 바로 문서화하지 않고 대화형 질문·답변으로 사업 아이디어와 구현 방식을 구체화한 뒤, 확정된 구현 브리프를 양식 항목과 페이지에 밀도 있게 배분한다. 실제 문서 산출물은 DOCX를 기본으로 하고, HWPX 양식 반영이 필요하면 bizplan-hwpx와 함께 사용한다. 기존 문서의 미작성 구간 보완에도 사용하며 완성된 문서의 평가·감수만 요청된 경우에는 사용하지 않는다.
 metadata:
-  version: "0.6.0"
+  version: "0.6.1"
   architecture: "generic-core-plus-project-profile"
   updated: "2026-08-31"
 ---

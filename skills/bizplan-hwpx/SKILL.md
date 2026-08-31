@@ -2,7 +2,7 @@
 name: bizplan-hwpx
 description: 확정된 국가 R&D·공모 사업계획서 내용을 HWPX 양식에 안전하게 반영하고 원본 보존, 모의 편집, 구조·텍스트 검증, 페이지 프리뷰와 한컴 재개방 확인을 수행한다. 사용자가 한글 양식, HWPX 작성본·수정본·제출본을 요청할 때 사용한다. 사업 아이디어 구체화나 본문 초안 작성만 필요한 경우에는 bizplan-draft를 사용하고, 바이너리 HWP 직접 편집에는 사용하지 않는다.
 metadata:
-  version: "0.2.0"
+  version: "0.2.1"
   architecture: "ax1-policy-wrapper-over-hwpx-plugin"
   updated: "2026-08-31"
 ---

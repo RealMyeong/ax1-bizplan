@@ -22,6 +22,10 @@ __pycache__/
 *.pptx
 *.xlsx
 
+# 산출물 표지 양식은 예외. 실제 사업계획서가 아니라 빈 양식과 표기 예시이고,
+# bizplan-artifact-format 스킬이 이 파일을 기준으로 문서를 만든다.
+!document_form/*.hwpx
+
 # Operating system files
 .DS_Store
 Thumbs.db

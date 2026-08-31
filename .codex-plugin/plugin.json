@@ -1,7 +1,7 @@
 {
   "name": "ax1-bizplan",
-  "version": "0.6.0",
-  "description": "AX1 팀의 국가 R&D·공모 사업계획서 작성, HWPX 반영, 검토, 수정 및 제출 점검 스킬 모음",
+  "version": "0.7.0",
+  "description": "AX1 팀의 국가 R&D·공모 사업계획서 작성, HWPX 반영, 산출물 버전 보관, 검토, 수정 및 제출 점검 스킬 모음",
   "author": {
     "name": "AX1 Team"
   },
@@ -9,7 +9,7 @@
   "interface": {
     "displayName": "AX1 Bizplan",
     "shortDescription": "AX1 사업계획서 작성·HWPX 반영·검토·수정 워크플로",
-    "longDescription": "국가 R&D와 공모 사업계획서의 작업공간 준비부터 초안, HWPX 양식 반영, 검토, 수정, 제출 전 점검과 근거 업데이트까지 지원합니다.",
+    "longDescription": "국가 R&D와 공모 사업계획서의 작업공간 준비부터 초안, HWPX 양식 반영, 산출물 최신본·이전버전 관리, 검토, 수정, 제출 전 점검과 근거 업데이트까지 지원합니다.",
     "developerName": "AX1 Team",
     "category": "Productivity",
     "capabilities": [

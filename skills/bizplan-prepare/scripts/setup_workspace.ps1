@@ -50,10 +50,15 @@ $relativeDirectories = @(
     "10_제출본\02_발표자료",
     "10_제출본\03_제출증빙",
     "90_참고자료",
+    "98_이전버전",
+    "98_이전버전\08_작성중",
+    "98_이전버전\09_검토_수정",
+    "98_이전버전\10_제출본",
     "99_임시작업"
 )
 
 $checklistPath = Join-Path -Path $resolvedRoot -ChildPath "사업계획서_준비현황.md"
+$versionLedgerPath = Join-Path -Path $resolvedRoot -ChildPath "98_이전버전\산출물_버전이력.md"
 $conflicts = [System.Collections.Generic.List[string]]::new()
 
 foreach ($relativePath in $relativeDirectories) {
@@ -65,10 +70,22 @@ foreach ($relativePath in $relativeDirectories) {
 if ([System.IO.Directory]::Exists($checklistPath)) {
     $conflicts.Add($checklistPath)
 }
+if ([System.IO.Directory]::Exists($versionLedgerPath)) {
+    $conflicts.Add($versionLedgerPath)
+}
 
 if ($conflicts.Count -gt 0) {
     $conflictList = $conflicts -join [Environment]::NewLine
     throw "A file/directory type conflict prevents safe setup. No changes were made:`n$conflictList"
+}
+
+$checklistAssetPath = [System.IO.Path]::GetFullPath((Join-Path -Path $PSScriptRoot -ChildPath "..\assets\preparation-status-template.md"))
+$versionLedgerAssetPath = [System.IO.Path]::GetFullPath((Join-Path -Path $PSScriptRoot -ChildPath "..\assets\artifact-version-ledger-template.md"))
+if (-not [System.IO.File]::Exists($checklistPath) -and -not [System.IO.File]::Exists($checklistAssetPath)) {
+    throw "Preparation checklist template is missing: $checklistAssetPath"
+}
+if (-not [System.IO.File]::Exists($versionLedgerPath) -and -not [System.IO.File]::Exists($versionLedgerAssetPath)) {
+    throw "Artifact version ledger template is missing: $versionLedgerAssetPath"
 }
 
 $createdDirectories = [System.Collections.Generic.List[string]]::new()
@@ -87,17 +104,20 @@ foreach ($relativePath in $relativeDirectories) {
 
 $checklistStatus = "existing"
 if (-not [System.IO.File]::Exists($checklistPath)) {
-    $assetPath = [System.IO.Path]::GetFullPath((Join-Path -Path $PSScriptRoot -ChildPath "..\assets\preparation-status-template.md"))
-    if (-not [System.IO.File]::Exists($assetPath)) {
-        throw "Preparation checklist template is missing: $assetPath"
-    }
-
     $projectName = [System.IO.Path]::GetFileName($normalizedRoot)
-    $templateContent = [System.IO.File]::ReadAllText($assetPath, [System.Text.Encoding]::UTF8)
+    $templateContent = [System.IO.File]::ReadAllText($checklistAssetPath, [System.Text.Encoding]::UTF8)
     $preparedContent = $templateContent.Replace("{{PROJECT_NAME}}", $projectName).Replace("{{CREATED_DATE}}", (Get-Date -Format "yyyy-MM-dd"))
     $utf8WithoutBom = [System.Text.UTF8Encoding]::new($false)
     [System.IO.File]::WriteAllText($checklistPath, $preparedContent, $utf8WithoutBom)
     $checklistStatus = "created"
+}
+
+$versionLedgerStatus = "existing"
+if (-not [System.IO.File]::Exists($versionLedgerPath)) {
+    $versionLedgerContent = [System.IO.File]::ReadAllText($versionLedgerAssetPath, [System.Text.Encoding]::UTF8)
+    $utf8WithoutBom = [System.Text.UTF8Encoding]::new($false)
+    [System.IO.File]::WriteAllText($versionLedgerPath, $versionLedgerContent, $utf8WithoutBom)
+    $versionLedgerStatus = "created"
 }
 
 $result = [ordered]@{
@@ -106,6 +126,8 @@ $result = [ordered]@{
     existing_directories = @($existingDirectories)
     checklist_path = $checklistPath
     checklist_status = $checklistStatus
+    version_ledger_path = $versionLedgerPath
+    version_ledger_status = $versionLedgerStatus
 }
 
 $result | ConvertTo-Json -Depth 4

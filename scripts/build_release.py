@@ -59,9 +59,11 @@ GENERAL_REFERENCES = {
     "05-project-profile.md": "shared/profiles/pi-lam-manufacturing-physical-ai-2026.md",
     "06-evaluator-lens.md": "shared/core/05-evaluator-lens.md",
     "07-artifact-workflow.md": "shared/core/07-artifact-workflow.md",
+    "10-artifact-version-management.md": "shared/core/10-artifact-version-management.md",
 }
 
 GENERAL_ASSETS = {
+    "artifact-version-ledger-template.md": "shared/templates/artifact-version-ledger-template.md",
     "change-log-template.md": "shared/templates/change-log-template.md",
     "document-style-profile-template.md": "shared/templates/document-style-profile-template.md",
     "indicator-ledger-template.csv": "shared/templates/indicator-ledger-template.csv",
@@ -101,6 +103,23 @@ def sync_shared_resources() -> None:
 
     for skill_name in ("bizplan-review", "bizplan-preflight"):
         copy_file("shared/tools/advisory_lint.py", SKILLS_ROOT / skill_name / "scripts" / "advisory_lint.py")
+
+    copy_file(
+        "shared/core/10-artifact-version-management.md",
+        SKILLS_ROOT / "bizplan-prepare" / "references" / "01-artifact-version-management.md",
+    )
+    copy_file(
+        "shared/templates/artifact-version-ledger-template.md",
+        SKILLS_ROOT / "bizplan-prepare" / "assets" / "artifact-version-ledger-template.md",
+    )
+    copy_file(
+        "shared/core/10-artifact-version-management.md",
+        SKILLS_ROOT / "bizplan-hwpx" / "references" / "05-artifact-version-management.md",
+    )
+    copy_file(
+        "shared/templates/artifact-version-ledger-template.md",
+        SKILLS_ROOT / "bizplan-hwpx" / "assets" / "artifact-version-ledger-template.md",
+    )
 
 
 def validate_frontmatter(skill: Path) -> str:

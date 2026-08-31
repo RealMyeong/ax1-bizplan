@@ -61,6 +61,7 @@ GENERAL_REFERENCES = {
     "07-artifact-workflow.md": "shared/core/07-artifact-workflow.md",
     "10-artifact-version-management.md": "shared/core/10-artifact-version-management.md",
     "11-artifact-synchronization.md": "shared/core/11-artifact-synchronization.md",
+    "12-user-confirmation-gate.md": "shared/core/12-user-confirmation-gate.md",
 }
 
 GENERAL_ASSETS = {
@@ -80,6 +81,17 @@ EVIDENCE_REFERENCES = {
     "03-current-evaluator-lens.md": "shared/core/05-evaluator-lens.md",
     "04-current-project-profile.md": "shared/profiles/pi-lam-manufacturing-physical-ai-2026.md",
     "05-profile-template.md": "shared/profiles/profile-template.md",
+    "06-user-confirmation-gate.md": "shared/core/12-user-confirmation-gate.md",
+}
+
+CONFIRMATION_REFERENCES = {
+    "bizplan-prepare": "references/03-user-confirmation-gate.md",
+    "bizplan-draft": "references/12-user-confirmation-gate.md",
+    "bizplan-review": "references/12-user-confirmation-gate.md",
+    "bizplan-revise": "references/12-user-confirmation-gate.md",
+    "bizplan-preflight": "references/12-user-confirmation-gate.md",
+    "bizplan-hwpx": "references/07-user-confirmation-gate.md",
+    "bizplan-evidence-update": "references/06-user-confirmation-gate.md",
 }
 
 
@@ -119,6 +131,10 @@ def sync_shared_resources() -> None:
         SKILLS_ROOT / "bizplan-prepare" / "references" / "02-artifact-synchronization.md",
     )
     copy_file(
+        "shared/core/12-user-confirmation-gate.md",
+        SKILLS_ROOT / "bizplan-prepare" / "references" / "03-user-confirmation-gate.md",
+    )
+    copy_file(
         "shared/templates/artifact-sync-ledger-template.md",
         SKILLS_ROOT / "bizplan-prepare" / "assets" / "artifact-sync-ledger-template.md",
     )
@@ -133,6 +149,10 @@ def sync_shared_resources() -> None:
     copy_file(
         "shared/core/11-artifact-synchronization.md",
         SKILLS_ROOT / "bizplan-hwpx" / "references" / "06-artifact-synchronization.md",
+    )
+    copy_file(
+        "shared/core/12-user-confirmation-gate.md",
+        SKILLS_ROOT / "bizplan-hwpx" / "references" / "07-user-confirmation-gate.md",
     )
     copy_file(
         "shared/templates/artifact-sync-ledger-template.md",
@@ -229,6 +249,22 @@ def validate_no_private_artifacts() -> None:
         )
 
 
+def validate_confirmation_gate() -> None:
+    canonical = (ROOT / "shared" / "core" / "12-user-confirmation-gate.md").read_bytes()
+    for skill_name, reference in CONFIRMATION_REFERENCES.items():
+        skill = SKILLS_ROOT / skill_name
+        skill_text = (skill / "SKILL.md").read_text(encoding="utf-8")
+        reference_path = skill / reference
+        if not reference_path.is_file() or reference_path.read_bytes() != canonical:
+            raise ValueError(f"{skill_name}: confirmation gate reference is missing or stale")
+        if "# 작업 시작 전 사용자 이해 확인" not in skill_text:
+            raise ValueError(f"{skill_name}: confirmation gate heading is missing")
+        if f"]({reference})" not in skill_text:
+            raise ValueError(f"{skill_name}: confirmation gate reference is not linked")
+        if "별도 메시지" not in skill_text or "동의" not in skill_text:
+            raise ValueError(f"{skill_name}: explicit subsequent-turn confirmation is missing")
+
+
 def validate_skills() -> dict[str, str]:
     validate_no_private_artifacts()
     versions: dict[str, str] = {}
@@ -239,6 +275,7 @@ def validate_skills() -> dict[str, str]:
         versions[skill_name] = validate_frontmatter(skill)
         validate_openai_yaml(skill)
         validate_references(skill)
+    validate_confirmation_gate()
     validate_lint_examples()
     validate_plugin()
     return versions

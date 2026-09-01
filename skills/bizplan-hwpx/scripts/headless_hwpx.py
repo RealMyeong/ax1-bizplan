@@ -38,6 +38,14 @@ MALGUN_BOLD = Path(r"C:\Windows\Fonts\malgunbd.ttf")
 # 체크 상태를 나타내는 문자는 의미 정보이므로 자동 치환하지 않는다. 글꼴 메트릭을
 # 읽을 수 없는 환경에서도 이 집합은 그대로 보존하고 최종 시각 검증 대상으로 남긴다.
 SEMANTIC_SYMBOLS = frozenset({"☐", "☑", "☒", "✓", "✔", "□", "■"})
+HANGUL_RANGES = (
+    (0x1100, 0x11FF),
+    (0x3130, 0x318F),
+    (0xA960, 0xA97F),
+    (0xAC00, 0xD7AF),
+    (0xD7B0, 0xD7FF),
+    (0xFFA0, 0xFFDC),
+)
 
 SECTION = "Contents/section0.xml"
 HEADER = "Contents/header.xml"
@@ -56,6 +64,45 @@ def sha256_file(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def is_hangul_codepoint(codepoint: int) -> bool:
+    return any(start <= codepoint <= end for start, end in HANGUL_RANGES)
+
+
+def hangul_runs(text: str) -> list[str]:
+    """문자열에서 연속된 한글 코드포인트 묶음을 입력 순서대로 반환한다."""
+    runs: list[str] = []
+    current: list[str] = []
+    for char in text:
+        if is_hangul_codepoint(ord(char)):
+            current.append(char)
+        elif current:
+            runs.append("".join(current))
+            current.clear()
+    if current:
+        runs.append("".join(current))
+    return runs
+
+
+def missing_hangul_runs(source_texts: list[str], rendered: str) -> list[str]:
+    """입력의 실제 한글 묶음 중 출력 원문에 그대로 남지 않은 값을 찾는다."""
+    expected = {run for text in source_texts for run in hangul_runs(text)}
+    return sorted((run for run in expected if run not in rendered), key=lambda value: (-len(value), value))
+
+
+def encoded_hangul_references(text: str) -> list[str]:
+    """실제 한글 대신 기록된 유니코드 이스케이프·숫자 문자참조를 찾는다."""
+    found: list[str] = []
+    for match in re.finditer(r"\\(?:u([0-9A-Fa-f]{4})|U([0-9A-Fa-f]{8}))", text):
+        codepoint = int(match.group(1) or match.group(2), 16)
+        if is_hangul_codepoint(codepoint):
+            found.append(match.group(0))
+    for match in re.finditer(r"&#(?:(?:x|X)([0-9A-Fa-f]+)|(\d+));", text):
+        codepoint = int(match.group(1), 16) if match.group(1) else int(match.group(2), 10)
+        if is_hangul_codepoint(codepoint):
+            found.append(match.group(0))
+    return found
 
 
 # --- ZIP 입출력 --------------------------------------------------------------

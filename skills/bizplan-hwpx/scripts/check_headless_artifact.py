@@ -86,6 +86,16 @@ def check(path: Path) -> list:
     for ch, n in sorted(missing.items()):
         add("지원하지 않는 문자", f"{ch!r} U+{ord(ch):04X} 제어·개인영역 문자 x{n}; 자동 치환하지 않음")
 
+    # 한글은 XML 내부에도 실제 UTF-8 문자로 기록한다. 표시 결과가 같더라도 코드
+    # 표기로 저장하면 후속 도구와 사람이 원문을 대조하기 어려우므로 실패시킨다.
+    encoded_hangul = H.encoded_hangul_references(section)
+    if encoded_hangul:
+        examples = ", ".join(encoded_hangul[:5])
+        add(
+            "한글 원문 보존",
+            f"실제 한글 대신 코드 표기가 {len(encoded_hangul)}건 남음: {examples}",
+        )
+
     # 승인 템플릿 자리표시자가 결과에 남으면 실패한다.
     residue = [
         token

@@ -43,6 +43,8 @@ def main() -> int:
 
 승인된 AX1 경량 생성기의 수용 테스트 문단입니다.
 
+한글원문보존 가나다라마바사아자차카타파하
+
 ## 1.1 구현 방식
 
 - 표준 라이브러리만 사용
@@ -52,13 +54,14 @@ def main() -> int:
 |---|---|
 | 선택 상태 | ☑ 완료 / ☐ 미완료 |
 | 줄간격 | 본문 160% / 표 셀 160% |
+| 한글 표 셀 | 한글표셀검증 |
 """
     cover = {
         "agency": "테스트 발주기관",
         "program": "테스트 사업",
         "project_number": "TEST-0000",
         "project": "테스트 세부사업",
-        "title": "AX1 경량 HWPX 수용 테스트",
+        "title": "한글표지보존 AX1 경량 HWPX 수용 테스트",
         "document_type": "검증 문서",
     }
 
@@ -68,17 +71,43 @@ def main() -> int:
         output = temp / "output.hwpx"
         output2 = temp / "output-second.hwpx"
         unsupported = temp / "unsupported.hwpx"
+        escaped_hangul = temp / "escaped-hangul.hwpx"
         content.write_text(markdown, encoding="utf-8")
         B.build(template, content, output, cover)
         issues = C.check(output)
         if issues:
             raise AssertionError(issues)
         section = H.get_text(H.read_hwpx(output), H.SECTION)
-        for token in ("☑ 완료", "☐ 미완료", "본문 160%", "표 셀 160%"):
+        for token in (
+            "☑ 완료",
+            "☐ 미완료",
+            "본문 160%",
+            "표 셀 160%",
+            "한글표지보존",
+            "한글원문보존",
+            "가나다라마바사아자차카타파하",
+            "한글표셀검증",
+        ):
             if token not in section:
                 raise AssertionError(f"의미·본문 보존 실패: {token}")
         if "□ 완료" in section or "□ 미완료" in section:
             raise AssertionError("체크 상태 기호가 빈 네모로 바뀜")
+        if H.encoded_hangul_references(section):
+            raise AssertionError("한글이 코드 표기로 기록됨")
+        if H.missing_hangul_runs(["한글표셀검증"], "hangeul-table-cell") != ["한글표셀검증"]:
+            raise AssertionError("한글 ASCII 대체를 원문 불일치로 탐지하지 못함")
+
+        encoded_entries = H.read_hwpx(output)
+        encoded_section = H.get_text(encoded_entries, H.SECTION).replace(
+            "한글표셀검증",
+            "&#xD55C;&#xAE00;&#xD45C;&#xC140;&#xAC80;&#xC99D;",
+            1,
+        )
+        H.set_text(encoded_entries, H.SECTION, encoded_section)
+        H.write_hwpx(encoded_entries, escaped_hangul)
+        escaped_issues = C.check(escaped_hangul)
+        if not any(issue["rule"] == "한글 원문 보존" for issue in escaped_issues):
+            raise AssertionError("한글 숫자 문자참조를 검사기가 탐지하지 못함")
 
         A.apply(output, output2)
         if C.check(output2):

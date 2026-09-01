@@ -1,6 +1,6 @@
 {
   "name": "ax1-bizplan",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "description": "AX1 팀의 국가 R&D·공모 사업계획서 작성, 창 없는 승인 템플릿 HWPX 생성, 공식 양식 반영, 최신 산출물 연동·버전 보관·검토·제출 점검 스킬 모음",
   "author": {
     "name": "AX1 Team"

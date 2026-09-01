@@ -46,6 +46,7 @@ TABLE_REPEAT_HEADER = 0
 
 
 def esc(s: str) -> str:
+    """XML 문법 문자만 이스케이프하고 한글은 UTF-8 실제 문자로 보존한다."""
     return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
@@ -557,6 +558,25 @@ def build(template: Path, content: Path, out: Path, cover: dict[str, str], make_
     if "</hs:sec>" not in section:
         raise SystemExit("section0.xml 에서 </hs:sec> 를 찾지 못했다")
     section = section.replace("</hs:sec>", "".join(parts) + "</hs:sec>", 1)
+
+    source_texts = list(cover.values())
+    for block in blocks:
+        if block[0] in {"h", "li"}:
+            source_texts.append(block[2])
+        elif block[0] == "p":
+            source_texts.append(block[1])
+        elif block[0] == "table":
+            source_texts.extend(cell for row in block[1] for cell in row)
+    missing_hangul = H.missing_hangul_runs(source_texts, section)
+    encoded_hangul = H.encoded_hangul_references(section)
+    if missing_hangul or encoded_hangul:
+        details = []
+        if missing_hangul:
+            details.append("원문 불일치: " + ", ".join(missing_hangul[:8]))
+        if encoded_hangul:
+            details.append("코드 표기: " + ", ".join(encoded_hangul[:8]))
+        raise H.HeadlessHwpxError("한글 원문 보존 검사 실패: " + "; ".join(details))
+    log.append(f"표지·본문·표 셀 한글 원문 보존 확인: {sum(len(H.hangul_runs(text)) for text in source_texts)}개 묶음")
 
     H.set_text(entries, H.HEADER, pool.finish())
     H.set_text(entries, H.SECTION, section)

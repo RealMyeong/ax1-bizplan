@@ -16,6 +16,14 @@ python <스킬>/scripts/build_headless_artifact.py `
 
 별도 `--template`은 받지 않는다. 포함된 승인 템플릿만 사용한다.
 
+## 한글 입력 보존
+
+- 표지 정보와 Markdown의 확정 한글은 입력된 실제 문자 그대로 사용한다.
+- 한글을 유니코드 이스케이프, 숫자 문자참조, 영문 음역 또는 ASCII 대체문자로 사전 변환하지 않는다.
+- JSON이나 로그를 거칠 때도 `ensure_ascii=False`와 UTF-8을 사용해 사람이 한글을 그대로 읽을 수 있게 한다.
+- XML 생성에서는 `&`·`<`·`>` 같은 문법 충돌 문자만 이스케이프하고 한글은 이스케이프하지 않는다.
+- 생성 후 표지·본문·목록·표 셀 readback을 확정 입력과 문자 단위로 대조한다. 서로 다르면 출력 파일을 승격하지 않는다.
+
 ## Markdown 지원
 
 | 입력 | 결과 |
@@ -35,8 +43,9 @@ python <스킬>/scripts/build_headless_artifact.py `
 생성기는 구조·서식 자동검사를 통과한 경우에만 최종 경로에 파일을 둔다. 이어서 다음을 수행한다.
 
 1. `check_headless_artifact.py` 재검사
-2. upstream `hwpx`의 구조·open-safety·readback 검증
-3. `render_preview` 검토
-4. 제출 후보라면 Windows 한컴에서 전체 페이지 관찰
+2. 확정 한글과 HWPX 내부 XML·readback의 실제 문자 일치 검사
+3. upstream `hwpx`의 구조·open-safety·readback 검증
+4. `render_preview` 검토
+5. 제출 후보라면 Windows 한컴에서 전체 페이지 관찰
 
 경량 생성 성공은 `structure_verified` 이전의 자동 생성 성공일 뿐이며, 한컴 시각 검증이나 제출 준비 완료를 뜻하지 않는다.

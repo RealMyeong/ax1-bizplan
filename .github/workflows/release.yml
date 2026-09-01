@@ -18,11 +18,18 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Validate contributor PR policy
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: python scripts/validate_pr.py --base "${{ github.event.pull_request.base.sha }}"
 
       - name: Validate skills and build packages
         run: python scripts/build_release.py
@@ -37,11 +44,12 @@ jobs:
       - name: Upload validation artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ax1-bizplan-${{ github.sha }}
+          name: ax1-bizplan-validation-${{ github.sha }}
           path: dist/
+          retention-days: 7
 
   publish:
-    if: github.event_name == 'push'
+    if: startsWith(github.ref, 'refs/tags/')
     needs: build
     runs-on: ubuntu-latest
     permissions:
@@ -55,11 +63,10 @@ jobs:
       - name: Download validated packages
         uses: actions/download-artifact@v4
         with:
-          name: ax1-bizplan-${{ github.sha }}
+          name: ax1-bizplan-validation-${{ github.sha }}
           path: dist
 
       - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ github.token }}
         run: >-
@@ -68,18 +75,3 @@ jobs:
           --verify-tag
           --title "AX1 Bizplan $GITHUB_REF_NAME"
           --notes-file dist/RELEASE_NOTES.md
-
-      - name: Refresh notes for the current published version
-        if: github.ref == 'refs/heads/main'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          tag="v$(tr -d '\r\n' < VERSION)"
-          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release edit "$tag" \
-              --repo "$GITHUB_REPOSITORY" \
-              --notes-file dist/RELEASE_NOTES.md
-          else
-            echo "::notice::Release $tag does not exist; notes refresh skipped."
-          fi

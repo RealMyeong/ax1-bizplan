@@ -368,7 +368,7 @@
   <header class="topbar">
     <div class="topbar-inner">
       <div class="brand"><span class="brand-mark">AX1</span> AX1 Bizplan</div>
-      <div class="version">안정 버전 v0.6.0 · 2026-08-20</div>
+      <div class="version">안정 버전 v0.7.3 · 2026-09-01</div>
     </div>
   </header>
 
@@ -455,8 +455,8 @@
         </article>
 
         <article class="card span-2">
-          <h3>HWPX 사용자 선행 설치</h3>
-          <p>DOCX만 사용할 때는 건너뜁니다. HWPX 양식 작성·수정이 필요하면 AX1이 검증한 upstream 플러그인을 한 번 설치하고 앱을 다시 시작합니다.</p>
+          <h3>공식 HWPX 편집 선행 설치</h3>
+          <p>DOCX와 승인 AX1 템플릿의 경량 생성만 사용할 때는 건너뜁니다. 공식 양식 채움·기존 HWPX 수정이 필요하면 AX1이 검증한 upstream 플러그인을 한 번 설치하고 앱을 다시 시작합니다.</p>
           <div class="code-wrap">
             <button class="copy-button" type="button">복사</button>
             <pre><code>AX1 검증 upstream HWPX 플러그인을 사용자 범위에 설치해줘.
@@ -489,6 +489,10 @@ AX1 검증 ref: b7ab90a1db826c5fa5db024ad01dc5132d073953
         </div>
       </section>
 
+      <div class="callout safe">
+        <strong>모든 작업의 첫 단계:</strong> 에이전트가 목적·예상 입력·범위·산출물·가정을 먼저 설명합니다. 내용이 맞으면 다음 메시지로 <code>맞아, 진행해줘</code>라고 답하세요. 그 전에는 파일 조회나 도구 실행을 시작하지 않으며, 설명이 다르면 수정 후 다시 확인합니다. <code>바로 진행</code>·<code>질문 없이</code>도 이 첫 확인을 생략하지 않습니다.
+      </div>
+
       <div class="card-grid" style="margin-top:18px">
         <article class="card span-2">
           <h3>스킬 선택표</h3>
@@ -498,7 +502,7 @@ AX1 검증 ref: b7ab90a1db826c5fa5db024ad01dc5132d073953
               <tbody>
                 <tr><td><code>bizplan-prepare</code></td><td>프로젝트 최상위 폴더와 준비현황 구성</td><td><code>$bizplan-prepare</code> / <code>/bizplan-prepare</code></td></tr>
                 <tr><td><code>bizplan-draft</code></td><td>회차별 질문으로 사업을 설계하고 양식에 밀도 있게 배분해 DOCX 초안 작성</td><td><code>$bizplan-draft</code> / <code>/bizplan-draft</code></td></tr>
-                <tr><td><code>bizplan-hwpx</code></td><td>확정 문안을 HWPX 양식에 반영하고 한컴 전체 페이지 검증</td><td><code>$bizplan-hwpx</code> / <code>/bizplan-hwpx</code></td></tr>
+                <tr><td><code>bizplan-hwpx</code></td><td>승인 템플릿 경량 생성 또는 공식 HWPX 양식 반영·검증</td><td><code>$bizplan-hwpx</code> / <code>/bizplan-hwpx</code></td></tr>
                 <tr><td><code>bizplan-review</code></td><td>공고문·RFP·평가배점표 기준 사전 검토</td><td><code>$bizplan-review</code> / <code>/bizplan-review</code></td></tr>
                 <tr><td><code>bizplan-revise</code></td><td>검토·평가의견을 문서 전체에 일관되게 반영</td><td><code>$bizplan-revise</code> / <code>/bizplan-revise</code></td></tr>
                 <tr><td><code>bizplan-preflight</code></td><td>제출 직전 빈칸·형식·수치·도표·파일명 점검</td><td><code>$bizplan-preflight</code> / <code>/bizplan-preflight</code></td></tr>
@@ -512,8 +516,15 @@ AX1 검증 ref: b7ab90a1db826c5fa5db024ad01dc5132d073953
           <h3>프로젝트 준비</h3>
           <div class="code-wrap">
             <button class="copy-button" type="button">복사</button>
-            <pre><code>$bizplan-prepare를 사용해서 현재 프로젝트 폴더를 사업계획서 작성 작업공간으로 준비해줘. 기존 파일은 이동하거나 덮어쓰지 마.</code></pre>
+            <pre><code>$bizplan-prepare를 사용해서 현재 프로젝트 폴더를 사업계획서 작성 작업공간으로 준비해줘. 최신 산출물 연동현황, 이전버전 보관함과 버전 이력표도 만들고 기존 파일은 이동하거나 덮어쓰지 마.</code></pre>
           </div>
+        </article>
+
+        <article class="card">
+          <h3>결과물 버전 관리</h3>
+          <p><code>08_작성중</code>·<code>09_검토_수정</code>·<code>10_제출본</code>에는 산출물군별 최신 검증본 한 묶음만 유지합니다. 이전본과 동반 프리뷰·검증기록은 <code>98_이전버전</code>으로 옮기고 <code>산출물_버전이력.md</code>에서 확인합니다.</p>
+          <p>한 산출물의 KPI·예산·기관 역할·기간·과업·실증 등이 바뀌면 다른 최신 산출물의 영향 위치를 비교하고 필요한 파일만 각각 새 버전으로 함께 갱신합니다. 기준 원천과 결과는 <code>산출물_연동현황.md</code>에 기록하며, 파생본의 고유 값을 상위 원장으로 자동 역전파하지 않습니다.</p>
+          <p>원본·RFP·양식과 서명·접수 증거는 자동 이동하지 않습니다. 접수번호·서명·제출시각이 특정 해시와 연결된 실제 제출 완료 파일도 이동·이름변경·덮어쓰기하지 않고, 정정은 별도 재제출 후보로 만듭니다. 검증 실패, 최신 버전 판별이 모호한 경우, 읽기 전용 검토에서는 어떤 파일도 이동하지 않습니다.</p>
         </article>
 
         <article class="card">
@@ -526,7 +537,16 @@ AX1 검증 ref: b7ab90a1db826c5fa5db024ad01dc5132d073953
         </article>
 
         <article class="card">
-          <h3>HWPX 양식 반영</h3>
+          <h3>창 없는 경량 HWPX 생성</h3>
+          <p>승인 템플릿과 확정 Markdown이 있으면 표준 라이브러리만 사용해 한컴오피스·COM·pyhwpx 창이나 승인 팝업 없이 만듭니다. 본문과 표 셀 줄간격은 모두 160%입니다.</p>
+          <div class="code-wrap">
+            <button class="copy-button" type="button">복사</button>
+            <pre><code>$bizplan-hwpx를 사용해서 확정 Markdown을 승인된 AX1 표지 템플릿에 넣어 경량 HWPX로 만들어줘. 표지 정보 6종과 템플릿 SHA-256을 확인하고, 한컴·COM 창 없이 생성해줘. 본문과 표 셀 줄간격은 모두 160%로 하고 체크박스 의미를 보존해줘. 구조 자동검사와 아직 필요한 한컴 시각 검증을 구분해서 알려줘.</code></pre>
+          </div>
+        </article>
+
+        <article class="card">
+          <h3>공식 HWPX 양식 반영</h3>
           <div class="code-wrap">
             <button class="copy-button" type="button">복사</button>
             <pre><code>$bizplan-hwpx를 사용해서 확정된 문안을 공식 HWPX 양식에 반영해줘. 원본은 덮어쓰지 말고, 양식 위치를 확인한 뒤 dry-run과 실제 반영을 구분해줘. 구조·본문·표 readback, 페이지 프리뷰와 한컴 전체 페이지 확인 결과도 알려줘.</code></pre>
@@ -557,6 +577,9 @@ AX1 검증 ref: b7ab90a1db826c5fa5db024ad01dc5132d073953
       </div>
       <div class="callout danger">
         <strong>입력 금지:</strong> 실제 사업계획서 내용, 기관명, 개인정보, 미공개 RFP·평가의견과 계정정보는 Form이나 GitHub에 직접 입력하지 않습니다.
+      </div>
+      <div class="callout">
+        <strong>직접 개선한 팀원:</strong> 저장소에서 에이전트에게 <code>AGENTS.md</code>, <code>CONTRIBUTING.md</code>, <code>docs/pr-operating-policy.md</code>를 먼저 읽고 PR을 만들도록 요청합니다. 팀원은 <code>.changes</code> 변경 조각을 추가하고 버전·태그·릴리즈 파일은 수정하지 않습니다.
       </div>
     </section>
 
@@ -626,18 +649,29 @@ git switch -c fix/간단한-작업명</code></pre>
         </article>
 
         <article class="card">
+          <h3>팀원 PR 통합</h3>
+          <p>PR은 완성 배포본이 아니라 기능 제안입니다. 최신 <code>main</code>에서 통합 브랜치를 만들고 기여자 이력을 보존하면서 필요한 기능을 이식합니다. <code>AGENTS.md</code>와 <code>CLAUDE.md</code>가 에이전트에게 같은 운영 원칙을 안내하고, CI가 버전 파일 수정과 <code>.changes</code> 누락을 차단합니다.</p>
+          <ul class="checklist">
+            <li>기여자는 VERSION·태그·릴리즈 파일을 수정하지 않음</li>
+            <li>공통 확인 게이트와 산출물 연동 규칙을 최신 main 기준으로 적용</li>
+            <li>실문서·개인정보·배포 권한 불명 자산을 제외</li>
+            <li>전체 ZIP과 개별 스킬 ZIP을 모두 설치 검증</li>
+          </ul>
+        </article>
+
+        <article class="card">
           <h3>2. 버전 결정</h3>
           <div class="table-wrap">
             <table>
               <thead><tr><th>변경</th><th>버전</th></tr></thead>
               <tbody>
-                <tr><td>오류·호환되는 소규모 개선</td><td>패치</td></tr>
-                <tr><td>새 기능·워크플로·스킬</td><td>마이너</td></tr>
-                <tr><td>설치·사용법 호환성 단절</td><td>메이저</td></tr>
+                <tr><td>기존 스킬의 호환 가능한 질문·출력·템플릿·폴더·안전·검증 개선</td><td>패치 기본</td></tr>
+                <tr><td>새 독립 스킬·필수 의존성·팀 사용법 전환·뚜렷한 역량 확장</td><td>관리자 승인 후 마이너</td></tr>
+                <tr><td>1.0 이후 설치·호출·산출물 호환성 단절</td><td>메이저</td></tr>
               </tbody>
             </table>
           </div>
-          <p><code>VERSION</code>, 플러그인 버전, 변경 스킬 버전과 <code>CHANGELOG.md</code>를 함께 맞춥니다.</p>
+          <p>v0.7.0 이후에는 영향 파일·스킬 수가 많아도 호환 가능한 기존 기능 개선이면 패치를 기본으로 합니다. 변경은 <code>Unreleased</code>에 누적하고, 새 기능군이나 사용법 전환일 때만 관리자가 마이너를 승인합니다. 현재 안정 버전은 <code>v0.7.3</code>입니다.</p>
         </article>
 
         <article class="card">
@@ -649,7 +683,7 @@ git status --short
 git diff --check
 git diff</code></pre>
           </div>
-          <p>전체 ZIP, 7개 개별 스킬 ZIP, 체크섬, <code>RELEASE_NOTES.md</code>와 저장 금지 자료 포함 여부를 확인합니다. 릴리스 노트의 주요 변경점은 현재 버전의 <code>CHANGELOG.md</code>에서 자동 생성됩니다. 초안 스킬 변경이면 첫 회차 질문 중지·부분 답변 후 다음 질문·명시적 즉시 작성의 세 경로를 확인하고, HWPX 변경이면 익명화 샘플의 dry-run·readback·프리뷰·Windows 한컴 전체 페이지 관찰까지 수행합니다.</p>
+          <p>전체 ZIP, 7개 개별 스킬 ZIP, 체크섬, <code>RELEASE_NOTES.md</code>와 저장 금지 자료 포함 여부를 확인합니다. 릴리스 노트의 주요 변경점은 현재 버전의 <code>CHANGELOG.md</code>에서 자동 생성됩니다. 모든 스킬은 첫 응답에서 도구 없이 이해 내용을 설명하고 별도 동의를 기다리는지, <code>바로 진행</code>·<code>질문 없이</code>·읽기 전용 요청도 이를 우회하지 않는지, 수정·실질적 범위 변경에는 재확인하는지 검증합니다. 초안 스킬 변경이면 최초 확인 뒤 첫 회차 질문 중지·부분 답변 후 다음 질문·명시적 즉시 작성의 세 경로를 확인합니다. HWPX 경량 변경이면 외부 패키지·GUI 없는 수용 테스트, 승인 템플릿 SHA-256, 단일 섹션 거부, 본문·표 셀 160%, 체크박스 의미 보존과 ZIP별 자산 포함을 확인하고, 일반 HWPX 변경이면 익명화 샘플의 dry-run·readback·프리뷰·Windows 한컴 전체 페이지 관찰까지 수행합니다. 결과물 관리 변경이면 산출물군별 최신 검증본만 작업공간에 남고 이전 묶음은 이력과 함께 보관되며, 의미 변경만 영향받는 최신 산출물에 단방향 연동되는지, 필수 후보 실패 시 부분 승격하지 않는지, 연동 대기 제출본을 준비로 판정하지 않는지도 확인합니다.</p>
         </article>
 
         <article class="card">
@@ -662,7 +696,7 @@ git tag vX.Y.Z
 git push origin main
 git push origin vX.Y.Z</code></pre>
           </div>
-          <p>태그는 <code>VERSION</code> 앞에 <code>v</code>를 붙인 값과 같아야 합니다. 자동 Release에는 주요 변경사항, 설치 안내와 스킬별 버전이 포함됩니다. 이미 같은 버전의 Release가 있으면 <code>main</code> 검증 시 태그와 첨부 파일은 유지하고 본문만 갱신합니다.</p>
+          <p>커밋마다 태그를 만들지 않습니다. 일반 변경은 2~4주간 <code>Unreleased</code>에 모으고, 테스트·버전 판단·팀 업데이트 필요를 관리자가 승인한 배포 묶음에만 태그를 만듭니다. <code>main</code> 푸시는 배포 금지 검증 스냅샷만 만들고 기존 Release를 수정하지 않습니다. 태그는 <code>VERSION</code> 앞에 <code>v</code>를 붙인 값과 같아야 하며, 이미 게시한 v0.7.0 태그와 자산은 유지합니다.</p>
         </article>
 
         <article class="card span-2">

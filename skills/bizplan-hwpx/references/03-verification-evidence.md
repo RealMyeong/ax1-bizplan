@@ -49,7 +49,9 @@
 
 한컴을 실행만 했거나 첫 페이지만 본 상태에서는 `observed_pass`로 기록하지 않음. 뷰어에서 파일을 임의 저장하지 않고 닫음
 
-증거는 `99_임시작업/HWPX_검증/<출력파일명>/visual-review.json`과 같은 프로젝트 내부 제한 경로에 두고 저장소에는 넣지 않음. 제출 후보 판정에는 다음 필드를 모두 요구함
+현재본과 검증 중인 새 버전의 증거는 `99_임시작업/HWPX_검증/<출력파일명>/visual-review.json`과 같은 프로젝트 내부 제한 경로에 두고 저장소에는 넣지 않음. 더 최신 버전이 승격되면 해당 HWPX의 프리뷰·readback·화면 증거 폴더도 같은 버전 묶음의 `98_이전버전` 보관 경로로 옮겨 이전 문서와 함께 확인할 수 있게 함. 증거 내부에 이동 전 절대경로가 기록되어 있으면 원본 증거는 고치지 않고, 같은 보관 폴더에 `evidence-relocation-map.json`을 추가해 증거 파일 SHA-256과 각 화면·프리뷰의 이동 전·후 프로젝트 상대경로를 기계 판독 가능한 형태로 기록함. 이력표 메모에도 해당 매핑 파일 경로를 남김. 제출 후보 판정에는 다음 필드를 모두 요구함
+
+`evidence-relocation-map.json`은 `schemaVersion: "ax1.hwpx-evidence-relocation/v1"`, `documentVersion`, `evidenceReceiptSha256`과 `files` 배열을 포함함. 각 파일에는 `sha256`, `previousPath`, `archivedPath`를 프로젝트 기준 상대경로로 기록함
 
 - `schemaVersion == "hwpx.visual-review.v1"`
 - `target.sha256`이 제출 후보 SHA-256과 일치
@@ -86,3 +88,4 @@ upstream 증거 도구가 없거나 위 필드를 만들 수 없으면 임의 AX
 - preview 산출물과 관찰 결과
 - 한컴 실행 파일 버전, 전체 페이지 관찰 결과와 화면 증거
 - 미확정 내용과 최종 승인자
+- 산출물군, 문서 버전, 현재·보관 상태와 버전 이력 경로

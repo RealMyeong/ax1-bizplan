@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "ax1.hwpx-template/v1",
+  "id": "ax1-deliverable-cover",
+  "file": "ax1-deliverable-cover.hwpx",
+  "sha256": "a292a53b64c3579cf4bcb1126378106f733013ae4a0598216bfeb4b7022f1be1",
+  "sections": 1,
+  "source": "PR #1 contributor-provided template, sanitized for AX1 team distribution",
+  "containsTeamLogo": true,
+  "placeholders": [
+    "[발주기관]",
+    "[사업명]",
+    "[과제번호]",
+    "[세부 사업명]",
+    "[산출물 제목]",
+    "[문서 유형]"
+  ],
+  "format": {
+    "bodyLineSpacingPercent": 160,
+    "tableCellLineSpacingPercent": 160,
+    "font": "맑은 고딕"
+  }
+}

@@ -28,11 +28,12 @@ python <스킬>/scripts/build_headless_artifact.py `
 
 | 입력 | 결과 |
 |---|---|
-| `# 제목` | 장 제목 15pt, 새 쪽 시작 |
-| `## 제목` | 절 제목 12pt |
-| `### 제목` | 항 제목 10.5pt |
+| `# 1. 제목` | 수준 1, 앞 공백 0개, 15pt, 새 쪽 시작 |
+| `## 1.1 제목` | 수준 2, 앞 U+0020 공백 3개, 12pt |
+| `### 1.1.1 제목` | 수준 3, 앞 U+0020 공백 5개, 10.5pt |
+| `#### 제목` 이상 | 앞 U+0020 공백 7개의 `•` 본문 목록으로 전환 |
 | 일반 문단 | 10pt, 160% |
-| `- 항목` | 단계형 목록 |
+| `- 항목` | 앞 U+0020 공백 7개의 `•` 본문 목록 |
 | `1. 항목` | 번호가 포함된 별도 문단 |
 | Markdown 표 | 첫 행 머리행, 모든 셀 160% |
 
@@ -44,8 +45,9 @@ python <스킬>/scripts/build_headless_artifact.py `
 
 1. `check_headless_artifact.py` 재검사
 2. 확정 한글과 HWPX 내부 XML·readback의 실제 문자 일치 검사
-3. upstream `hwpx`의 구조·open-safety·readback 검증
-4. `render_preview` 검토
-5. 제출 후보라면 Windows 한컴에서 전체 페이지 관찰
+3. 제목 수준과 본문 목록의 앞 공백 0·3·5·7개, 탭·특수 공백과 문단 왼쪽·첫 줄 들여쓰기 중복 부재 검사
+4. upstream `hwpx`의 구조·open-safety·readback 검증
+5. `render_preview` 검토
+6. 제출 후보라면 Windows 한컴에서 전체 페이지 관찰
 
 경량 생성 성공은 `structure_verified` 이전의 자동 생성 성공일 뿐이며, 한컴 시각 검증이나 제출 준비 완료를 뜻하지 않는다.

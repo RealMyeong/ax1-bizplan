@@ -136,6 +136,41 @@ def check(path: Path) -> list:
         if shared:
             add("줄간격", f"본문과 표 셀이 문단모양 {', '.join(sorted(shared))} 을 공유해 한쪽이 반드시 틀어짐")
 
+    # 3-1. 공식 양식 지정이 없는 경량 본문의 개요 수준은 실제 U+0020 앞 공백으로
+    # 표현하고 문단 왼쪽 들여쓰기를 더하지 않는다.
+    outline_spaces = {1500: 0, 1200: 3, 1050: 5}
+    for offset, attrs, body in H.paragraphs(section):
+        if offset < body_start or H.in_any_span(spans, offset):
+            continue
+        pid_match = H.re.search(r'paraPrIDRef="(\d+)"', attrs)
+        run_match = H.re.search(r'<hp:run charPrIDRef="(\d+)">(.*?)</hp:run>', body, H.re.S)
+        if not run_match:
+            continue
+        text = H.unescape("".join(H.re.findall(r"<hp:t>([^<]*)</hp:t>", run_match.group(2))))
+        if not text:
+            continue
+        char_pr = char_prs.get(run_match.group(1))
+        expected = outline_spaces.get(char_pr.height) if char_pr and char_pr.bold else None
+        stripped = text.lstrip()
+        if stripped.startswith("• "):
+            expected = 7
+        if expected is None:
+            continue
+        if text != " " * expected + stripped:
+            add(
+                "개요 수준 들여쓰기",
+                f"앞 공백이 일반 반각 공백 {expected}개가 아님 :: {text[:34]!r}",
+            )
+        pid = pid_match.group(1) if pid_match else None
+        if pid and (
+            para_prs.get(pid, {}).get("left") != 0
+            or para_prs.get(pid, {}).get("intent") != 0
+        ):
+            add(
+                "개요 수준 들여쓰기",
+                f"문단모양 {pid}의 왼쪽·첫 줄 들여쓰기가 0이 아니어서 앞 공백과 중복됨",
+            )
+
     # 4. 글자 크기 - 본문 구간
     used_heights = {}
     for offset, _, body in H.paragraphs(section):

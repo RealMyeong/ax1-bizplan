@@ -47,6 +47,10 @@ def main() -> int:
 
 ## 1.1 구현 방식
 
+### 1.1.1 세부 검증
+
+#### 1.1.1.1 숫자 제목으로 남기지 않을 항목
+
 - 표준 라이브러리만 사용
 - 한컴오피스와 COM 창을 실행하지 않음
 
@@ -72,6 +76,7 @@ def main() -> int:
         output2 = temp / "output-second.hwpx"
         unsupported = temp / "unsupported.hwpx"
         escaped_hangul = temp / "escaped-hangul.hwpx"
+        bad_outline = temp / "bad-outline.hwpx"
         content.write_text(markdown, encoding="utf-8")
         B.build(template, content, output, cover)
         issues = C.check(output)
@@ -96,6 +101,47 @@ def main() -> int:
             raise AssertionError("한글이 코드 표기로 기록됨")
         if H.missing_hangul_runs(["한글표셀검증"], "hangeul-table-cell") != ["한글표셀검증"]:
             raise AssertionError("한글 ASCII 대체를 원문 불일치로 탐지하지 못함")
+
+        paragraph_texts = []
+        header = H.get_text(H.read_hwpx(output), H.HEADER)
+        para_prs = H.parse_para_prs(header)
+        for _, attrs, body in H.paragraphs(section):
+            text = H.unescape("".join(H.re.findall(r"<hp:t>([^<]*)</hp:t>", body)))
+            if text:
+                paragraph_texts.append(text)
+            if text in {
+                "1. 사업 개요",
+                "   1.1 구현 방식",
+                "     1.1.1 세부 검증",
+                "       • 숫자 제목으로 남기지 않을 항목",
+                "       • 표준 라이브러리만 사용",
+            }:
+                pid = H.re.search(r'paraPrIDRef="(\d+)"', attrs)
+                if not pid or para_prs[pid.group(1)]["left"] != 0 or para_prs[pid.group(1)]["intent"] != 0:
+                    raise AssertionError(f"개요 문단 왼쪽 들여쓰기 중복: {text!r}")
+        for expected in (
+            "1. 사업 개요",
+            "   1.1 구현 방식",
+            "     1.1.1 세부 검증",
+            "       • 숫자 제목으로 남기지 않을 항목",
+            "       • 표준 라이브러리만 사용",
+        ):
+            if expected not in paragraph_texts:
+                raise AssertionError(f"개요 수준 앞 공백 보존 실패: {expected!r}")
+        if any("1.1.1.1" in text for text in paragraph_texts):
+            raise AssertionError("4단계 숫자 제목이 본문 목록으로 전환되지 않음")
+
+        bad_entries = H.read_hwpx(output)
+        bad_section = H.get_text(bad_entries, H.SECTION).replace(
+            "   1.1 구현 방식",
+            "  1.1 구현 방식",
+            1,
+        )
+        H.set_text(bad_entries, H.SECTION, bad_section)
+        H.write_hwpx(bad_entries, bad_outline)
+        bad_outline_issues = C.check(bad_outline)
+        if not any(issue["rule"] == "개요 수준 들여쓰기" for issue in bad_outline_issues):
+            raise AssertionError("잘못된 제목 앞 공백을 검사기가 탐지하지 못함")
 
         encoded_entries = H.read_hwpx(output)
         encoded_section = H.get_text(encoded_entries, H.SECTION).replace(

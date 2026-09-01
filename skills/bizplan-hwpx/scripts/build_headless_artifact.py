@@ -32,6 +32,8 @@ import check_headless_artifact as C  # noqa: E402
 
 # 제목 계층 (references/08-headless-format-rules.md 의 글자 크기 계층과 같아야 함)
 HEADING_HEIGHT = {1: 1500, 2: 1200, 3: 1050}
+OUTLINE_PREFIX_SPACES = {1: 0, 2: 3, 3: 5}
+BODY_LIST_PREFIX_SPACES = 7
 TABLE_OUT_MARGIN = 283
 CELL_MARGIN = (510, 510, 141, 141)  # left right top bottom
 MIN_COL_WIDTH = 3000
@@ -97,10 +99,16 @@ def parse_markdown(text: str) -> list:
             i += 1
             continue
 
-        m = re.match(r"^(#{1,6})\s+(.*)$", stripped)
+        m = re.match(r"^(#{1,})\s+(.*)$", stripped)
         if m:
             flush()
-            blocks.append(("h", min(len(m.group(1)), 3), strip_inline(m.group(2))))
+            level = len(m.group(1))
+            heading_text = strip_inline(m.group(2))
+            if level <= 3:
+                blocks.append(("h", level, heading_text))
+            else:
+                heading_text = re.sub(r"^\d+(?:\.\d+){3,}\.?\s+", "", heading_text)
+                blocks.append(("li", 1, heading_text))
             i += 1
             continue
 
@@ -206,6 +214,8 @@ class StylePool:
     def para_indent(self, left: int) -> str:
         block = self.paras[self.base_para]
         block = re.sub(r'(<hc:left value=")-?\d+(")', lambda m: m.group(1) + str(left) + m.group(2), block)
+        if left == 0:
+            block = re.sub(r'(<hc:intent value=")-?\d+(")', r'\g<1>0\2', block)
         want = self._strip(block, "paraPr")
         for pid, existing in self.paras.items():
             if self._strip(existing, "paraPr") == want:
@@ -275,8 +285,9 @@ class Emitter:
 
     def heading(self, level: int, text: str) -> str:
         height = HEADING_HEIGHT[level]
+        text = " " * OUTLINE_PREFIX_SPACES[level] + text.lstrip()
         return self.para(
-            text, self.pool.base_para, self.pool.char(height, True), height,
+            text, self.pool.para_indent(0), self.pool.char(height, True), height,
             page_break=(level == 1), bold=True,
         )
 
@@ -284,13 +295,14 @@ class Emitter:
         return self.para(text, self.pool.base_para, self.pool.char(H.BODY_TEXT_HEIGHT, False), H.BODY_TEXT_HEIGHT)
 
     def item(self, level: int, text: str) -> str:
-        para_id = self.pool.para_indent(min(level, 3) * 1000)
+        del level  # 경량 기본 목록은 한 단계이며 실제 U+0020 공백 7개로 들여쓴다.
+        text = " " * BODY_LIST_PREFIX_SPACES + "• " + text.lstrip()
         return self.para(
-            "· " + text,
-            para_id,
+            text,
+            self.pool.para_indent(0),
             self.pool.char(H.BODY_TEXT_HEIGHT, False),
             H.BODY_TEXT_HEIGHT,
-            horzsize=self.text_width - min(level, 3) * 1000,
+            horzsize=self.text_width,
         )
 
     def table(self, rows: list, regular: H.Font, boldfont: H.Font) -> str:

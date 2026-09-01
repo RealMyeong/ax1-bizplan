@@ -417,15 +417,19 @@ def parse_char_prs(header: str) -> dict:
 
 
 def parse_para_prs(header: str) -> dict:
-    """paraPr id -> {"spacing": %, "align": 가로정렬}"""
+    """paraPr id -> 줄간격·정렬·왼쪽/첫 줄 들여쓰기."""
     out = {}
     for m in re.finditer(r'<hh:paraPr id="(\d+)"[^>]*>(.*?)</hh:paraPr>', header, re.S):
         body = m.group(2)
         ls = re.search(r'<hh:lineSpacing type="PERCENT" value="(-?\d+)"', body)
         al = re.search(r'<hh:align horizontal="(\w+)"', body)
+        left = re.search(r'<hc:left value="(-?\d+)"', body)
+        intent = re.search(r'<hc:intent value="(-?\d+)"', body)
         out[m.group(1)] = {
             "spacing": int(ls.group(1)) if ls else None,
             "align": al.group(1) if al else None,
+            "left": int(left.group(1)) if left else None,
+            "intent": int(intent.group(1)) if intent else None,
         }
     return out
 

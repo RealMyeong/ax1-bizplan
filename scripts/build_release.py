@@ -106,6 +106,7 @@ CONFIRMATION_REFERENCES = {
     "bizplan-revise": "references/12-user-confirmation-gate.md",
     "bizplan-preflight": "references/12-user-confirmation-gate.md",
     "bizplan-hwpx": "references/07-user-confirmation-gate.md",
+    "bizplan-artifact-format": "references/05-user-confirmation-gate.md",
     "bizplan-evidence-update": "references/06-user-confirmation-gate.md",
 }
 

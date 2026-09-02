@@ -7,9 +7,10 @@
 이미 갖고 있으므로 건너뛴다.
 
 지원하는 마크다운
-    #/##/###   장·절·항 제목      | ... |   표 (첫 줄이 머리행)
-    빈 줄 구분  본문 문단          -, *     리스트
-    1. 2. 3.   번호 목록 (번호를 글자로 남기고 각각 별개 문단)
+    #/##/###/####  장·절·항 제목 (4수준은 3수준과 같은 서식)
+    | ... |     표 (첫 줄이 머리행)      빈 줄 구분   본문 문단
+    -, *        불릿 리스트. 들여쓰기 2칸마다 한 단계, 기호 ● - · ·
+    1. 2. 3.    번호 목록. 단계별 1. 가. 1) 로 바꾸고 내어쓰기를 준다
 아직 안 되는 것: 그림, 쪽번호, 병합 셀, 각주
 """
 
@@ -26,17 +27,15 @@ sys.dont_write_bytecode = True
 import hwpx_format as H  # noqa: E402
 import apply_artifact_format as A  # noqa: E402
 
-# 제목 계층 (references/01-format-rules.md 의 글자 크기 계층과 같아야 함)
-HEADING_HEIGHT = {1: 1500, 2: 1200, 3: 1050}
 TABLE_OUT_MARGIN = 283
 CELL_MARGIN = (510, 510, 141, 141)  # left right top bottom
 MIN_COL_WIDTH = 3000
 
 # 표 기본 속성 (한/글 [표 속성] 대화상자와 대응)
-#   글자처럼 취급   -> treat_as_char   (해제)
+#   글자처럼 취급   -> treat_as_char   (지정 = 1. 표가 문단 안에서 글자처럼 흐른다)
 #   쪽 경계에서     -> page_break      (셀 단위로 나눔 = CELL)
 #   제목 줄 자동 반복 -> repeat_header   (끔). 셀의 header 속성도 함께 0
-TABLE_TREAT_AS_CHAR = 0
+TABLE_TREAT_AS_CHAR = 1
 TABLE_PAGE_BREAK = "CELL"
 TABLE_REPEAT_HEADER = 0
 
@@ -95,7 +94,7 @@ def parse_markdown(text: str) -> list:
         m = re.match(r"^(#{1,6})\s+(.*)$", stripped)
         if m:
             flush()
-            blocks.append(("h", min(len(m.group(1)), 3), strip_inline(m.group(2))))
+            blocks.append(("h", min(len(m.group(1)), 4), strip_inline(m.group(2))))
             i += 1
             continue
 
@@ -121,10 +120,11 @@ def parse_markdown(text: str) -> list:
 
         # 번호 목록은 번호를 글자로 남기고 각각 별개 문단으로 둔다.
         # 한 문단으로 뭉치면 아주 긴 문단이 되어 줄바꿈이 어긋난다.
-        m = re.match(r"^(\s*)\d+\.\s+(.*)$", line)
+        # 번호는 단계별 형식(1. / 가. / 1))으로 바꾸므로 숫자만 넘긴다.
+        m = re.match(r"^(\s*)(\d+)[.)]\s+(.*)$", line)
         if m:
             flush()
-            blocks.append(("p", strip_inline(line.strip())))
+            blocks.append(("ol", len(m.group(1)) // 2 + 1, int(m.group(2)), strip_inline(m.group(3))))
             i += 1
             continue
 
@@ -198,9 +198,15 @@ class StylePool:
         self.new_chars.append(block)
         return new_id
 
-    def para_indent(self, left: int) -> str:
+    def para_variant(self, left=0, intent=0, prev=0, next_=0) -> str:
+        """본문 문단모양에서 여백만 바꾼 변형을 확보한다.
+
+        여백은 hp:switch 의 case/default 두 분기에 중복돼 있으므로
+        count 제한 없이 치환해 두 분기를 함께 고친다.
+        """
         block = self.paras[self.base_para]
-        block = re.sub(r'(<hc:left value=")-?\d+(")', lambda m: m.group(1) + str(left) + m.group(2), block)
+        for name, val in (("left", left), ("intent", intent), ("prev", prev), ("next", next_)):
+            block = re.sub(rf'(<hc:{name} value=")-?\d+(")', lambda m, v=val: m.group(1) + str(v) + m.group(2), block)
         want = self._strip(block, "paraPr")
         for pid, existing in self.paras.items():
             if self._strip(existing, "paraPr") == want:
@@ -230,12 +236,13 @@ class StylePool:
 
 class Emitter:
     def __init__(self, pool: StylePool, text_width: int, plain_fill: str,
-                 regular: H.Font, boldfont: H.Font):
+                 regular: H.Font, boldfont: H.Font, styles: dict = None):
         self.pool = pool
         self.text_width = text_width
         self.plain_fill = plain_fill
         self.regular = regular
         self.boldfont = boldfont
+        self.styles = styles or {}
         self.next_id = 1200000000
 
     def _id(self) -> int:
@@ -259,33 +266,66 @@ class Emitter:
         return f"<hp:linesegarray>{segs}</hp:linesegarray>"
 
     def para(self, text: str, para_id: str, char_id: str, height: int, horzsize=None,
-             page_break=False, bold=False) -> str:
+             page_break=False, bold=False, style="0") -> str:
         run = f"<hp:run charPrIDRef=\"{char_id}\">{'<hp:t>' + esc(text) + '</hp:t>' if text else ''}</hp:run>"
         width = horzsize if horzsize is not None else self.text_width
         return (
-            f'<hp:p id="{self._id()}" paraPrIDRef="{para_id}" styleIDRef="0"'
+            f'<hp:p id="{self._id()}" paraPrIDRef="{para_id}" styleIDRef="{style}"'
             f' pageBreak="{1 if page_break else 0}" columnBreak="0" merged="0">'
             f"{run}{self._linesegs(text, height, bold, width)}</hp:p>"
         )
 
     def heading(self, level: int, text: str) -> str:
-        height = HEADING_HEIGHT[level]
+        level = min(level, 4)
+        height = H.HEADING_HEIGHT[level]
+        prev, next_ = H.HEADING_MARGIN[level]
         return self.para(
-            text, self.pool.base_para, self.pool.char(height, True), height,
-            page_break=(level == 1), bold=True,
+            text,
+            self.pool.para_variant(prev=prev, next_=next_),
+            self.pool.char(height, True),
+            height,
+            page_break=(level == 1),
+            bold=True,
+            style=self.styles.get(H.HEADING_STYLE[level], "0"),
         )
 
     def body(self, text: str) -> str:
         return self.para(text, self.pool.base_para, self.pool.char(H.BODY_TEXT_HEIGHT, False), H.BODY_TEXT_HEIGHT)
 
-    def item(self, level: int, text: str) -> str:
-        para_id = self.pool.para_indent(min(level, 3) * 1000)
+    def _list_para(self, level: int, marker: str, text: str) -> str:
+        """머리 글자 + 내어쓰기 리스트 문단. 접힌 줄이 글자 시작점에 맞춰진다."""
+        hang = H.marker_hang(marker, self.regular, self.boldfont)
+        left = (level - 1) * H.LIST_INDENT_STEP + hang
         return self.para(
-            "· " + text,
-            para_id,
+            marker + " " + text,
+            self.pool.para_variant(left=left, intent=-hang),
             self.pool.char(H.BODY_TEXT_HEIGHT, False),
             H.BODY_TEXT_HEIGHT,
-            horzsize=self.text_width - min(level, 3) * 1000,
+            horzsize=self.text_width - left,
+        )
+
+    def item(self, level: int, text: str) -> str:
+        level = min(level, 4)
+        return self._list_para(level, H.BULLETS[level], text)
+
+    def ordered_item(self, level: int, n: int, text: str) -> str:
+        level = min(level, 4)
+        return self._list_para(level, H.ordered_marker(level, n), text)
+
+    def toc_entry(self, level: int, text: str) -> str:
+        """목차 항목. 장은 굵게, 절은 들여쓰기. 항 이하는 만들지 않는다."""
+        if level == 1:
+            return self.para(
+                text, self.pool.base_para, self.pool.char(H.BODY_TEXT_HEIGHT, True),
+                H.BODY_TEXT_HEIGHT, bold=True, style=self.styles.get(H.TOC_STYLE[1], "0"),
+            )
+        return self.para(
+            text,
+            self.pool.para_variant(left=H.TOC_INDENT),
+            self.pool.char(H.BODY_TEXT_HEIGHT, False),
+            H.BODY_TEXT_HEIGHT,
+            horzsize=self.text_width - H.TOC_INDENT,
+            style=self.styles.get(H.TOC_STYLE[2], "0"),
         )
 
     def table(self, rows: list, regular: H.Font, boldfont: H.Font) -> str:
@@ -397,56 +437,6 @@ def default_template():
     return None
 
 
-def text_width_of(section: str) -> int:
-    m = re.search(r'<hp:pagePr[^>]*width="(\d+)"[^>]*>.*?<hp:margin[^>]*left="(\d+)" right="(\d+)"', section, re.S)
-    if not m:
-        return 42520
-    return int(m.group(1)) - int(m.group(2)) - int(m.group(3))
-
-
-
-def relayout_paragraph(para_xml: str, char_prs: dict, regular: H.Font, boldfont: H.Font) -> str:
-    """글자를 바꾼 문단의 줄 배치 정보를 다시 만든다.
-
-    양식의 자리표시자를 더 긴 글자로 바꾸면 원래 줄 배치가 그대로 남아
-    여러 줄이 한 자리에 겹쳐 그려진다. 글자를 건드렸으면 배치도 다시 계산해야 한다.
-    글꼴·크기·정렬은 그대로 두고 줄 수와 세로 위치만 고친다.
-    """
-    parts = para_xml.split("<hp:linesegarray>")
-    if len(parts) < 2:
-        return para_xml
-    head = parts[0]
-    inner, _, rest = parts[1].partition("</hp:linesegarray>")
-    first = re.search(r"<hp:lineseg ([^>]*)/>", inner)
-    if not first:
-        return para_xml
-    attrs = first.group(1)
-
-    def num(name, default):
-        m = re.search(rf'{name}="(-?\d+)"', attrs)
-        return int(m.group(1)) if m else default
-
-    vertsize = num("vertsize", 1000)
-    textheight = num("textheight", vertsize)
-    baseline = num("baseline", round(vertsize * 0.85))
-    spacing = num("spacing", 0)
-    horzpos = num("horzpos", 0)
-    horzsize = num("horzsize", 42520)
-    vertpos0 = num("vertpos", 0)
-    flags = (re.search(r'flags="(\d+)"', attrs) or [None, "393216"])[1]
-
-    text, widths = H.paragraph_runs(head, char_prs, regular, boldfont)
-    starts = H.wrap_widths(text, widths, horzsize)
-    line_h = vertsize + spacing
-    segs = "".join(
-        f'<hp:lineseg textpos="{pos}" vertpos="{vertpos0 + i * line_h}" vertsize="{vertsize}"'
-        f' textheight="{textheight}" baseline="{baseline}" spacing="{spacing}"'
-        f' horzpos="{horzpos}" horzsize="{horzsize}" flags="{flags}"/>'
-        for i, pos in enumerate(starts)
-    )
-    return head + "<hp:linesegarray>" + segs + "</hp:linesegarray>" + rest
-
-
 def fill_cover(section: str, header: str, title: str, project: str, log: list) -> str:
     """표지의 제목·과제번호 자리표시자를 채운다.
 
@@ -507,7 +497,7 @@ def fill_cover(section: str, header: str, title: str, project: str, log: list) -
             para,
             count=1,
         )
-        para = relayout_paragraph(para, char_prs, regular, boldfont)
+        para = H.relayout_paragraph(para, char_prs, regular, boldfont)
         section = section[:off] + para + section[end:]
         relaid += 1
     log.append(f"바뀐 표지 문단 {relaid}개의 줄 배치 재계산")
@@ -527,20 +517,22 @@ def build(template: Path, content: Path, out: Path, title="", project="", make_t
     for b in blocks:
         kinds[b[0]] = kinds.get(b[0], 0) + 1
     log.append(f"본문 블록 {len(blocks)}개 (제목 {kinds.get('h', 0)}, 문단 {kinds.get('p', 0)}, "
-               f"리스트 {kinds.get('li', 0)}, 표 {kinds.get('table', 0)})")
+               f"불릿 {kinds.get('li', 0)}, 번호 {kinds.get('ol', 0)}, 표 {kinds.get('table', 0)})")
 
     pool = StylePool(header)
     regular, boldfont = H.Font(H.MALGUN), H.Font(H.MALGUN_BOLD)
-    emitter = Emitter(pool, text_width_of(section), plain_border_fill(header), regular, boldfont)
+    styles = H.style_ids_by_name(header)
+    emitter = Emitter(pool, H.text_width_of(section), plain_border_fill(header), regular, boldfont, styles)
 
     parts = []
 
-    # 목차 항목 - 장 제목에서 뽑는다. 목차 제목 문단까지가 양식이고 항목부터가 생성물이다.
+    # 목차 항목 - 장·절 제목에서 뽑는다. 목차 제목 문단까지가 양식이고 항목부터가 생성물이다.
     if make_toc:
-        chapters = [b[2] for b in blocks if b[0] == "h" and b[1] == 1]
-        for name in chapters:
-            parts.append(emitter.body(name))
-        log.append(f"목차 항목 {len(chapters)}개 생성")
+        toc_items = [(b[1], b[2]) for b in blocks if b[0] == "h" and b[1] <= 2]
+        for lv, name in toc_items:
+            parts.append(emitter.toc_entry(lv, name))
+        n1 = sum(1 for lv, _ in toc_items if lv == 1)
+        log.append(f"목차 항목 {len(toc_items)}개 생성 (장 {n1}, 절 {len(toc_items) - n1})")
 
     for block in blocks:
         if block[0] == "h":
@@ -549,6 +541,8 @@ def build(template: Path, content: Path, out: Path, title="", project="", make_t
             parts.append(emitter.body(block[1]))
         elif block[0] == "li":
             parts.append(emitter.item(block[1], block[2]))
+        elif block[0] == "ol":
+            parts.append(emitter.ordered_item(block[1], block[2], block[3]))
         elif block[0] == "table":
             parts.append(emitter.table(block[1], regular, boldfont))
 

@@ -25,6 +25,22 @@ BODY_TEXT_HEIGHT = 1000  # 10pt. HWPUNIT = pt * 100
 WRAP_SAFETY = 0.97
 ALLOWED_HEIGHTS = (1000, 1050, 1200, 1500)  # 본문 10 / 항 10.5 / 절 12 / 장 15
 
+# 제목 계층. 4수준은 3수준과 서식이 같고 개요 스타일 태그만 다르다.
+# HEADING_MARGIN 은 (문단 위, 문단 아래) 간격이며 단위는 HWPUNIT (1pt = 100).
+HEADING_HEIGHT = {1: 1500, 2: 1200, 3: 1050, 4: 1050}
+HEADING_MARGIN = {1: (0, 1000), 2: (1400, 500), 3: (1000, 300), 4: (1000, 300)}
+HEADING_STYLE = {1: "개요 1", 2: "개요 2", 3: "개요 3", 4: "개요 4"}
+
+# 목차 항목 - 장(굵게)·절(들여쓰기) 2단계. 항 이하는 목차에 넣지 않는다.
+TOC_INDENT = 1000
+TOC_STYLE = {1: "차례 1", 2: "차례 2"}
+
+# 리스트 - 단계별 불릿 기호. 4수준 기호는 3수준과 같고 들여쓰기만 한 단계 더 는다.
+# 접히는 줄이 글자 시작점에 맞춰지도록 내어쓰기(intent 음수)를 함께 쓴다.
+BULLETS = {1: "●", 2: "-", 3: "·", 4: "·"}
+LIST_INDENT_STEP = 1000  # 단계당 왼쪽여백 증가분
+GANADA = "가나다라마바사아자차카타파하"
+
 MALGUN = Path(r"C:\Windows\Fonts\malgun.ttf")
 MALGUN_BOLD = Path(r"C:\Windows\Fonts\malgunbd.ttf")
 
@@ -260,16 +276,41 @@ def parse_char_prs(header: str) -> dict:
 
 
 def parse_para_prs(header: str) -> dict:
-    """paraPr id -> {"spacing": %, "align": 가로정렬}"""
+    """paraPr id -> {"spacing": %, "align": 가로정렬, "intent"/"left"/"prev"/"next": HWPUNIT}
+
+    여백은 hp:switch 의 case/default 두 분기에 중복돼 있으므로 첫 값을 읽는다.
+    (수정할 때는 두 분기를 모두 고쳐야 한다.)
+    """
     out = {}
     for m in re.finditer(r'<hh:paraPr id="(\d+)"[^>]*>(.*?)</hh:paraPr>', header, re.S):
         body = m.group(2)
         ls = re.search(r'<hh:lineSpacing type="PERCENT" value="(-?\d+)"', body)
         al = re.search(r'<hh:align horizontal="(\w+)"', body)
-        out[m.group(1)] = {
+        d = {
             "spacing": int(ls.group(1)) if ls else None,
             "align": al.group(1) if al else None,
         }
+        for name in ("intent", "left", "prev", "next"):
+            mm = re.search(rf'<hc:{name} value="(-?\d+)"', body)
+            d[name] = int(mm.group(1)) if mm else 0
+        out[m.group(1)] = d
+    return out
+
+
+def style_ids_by_name(header: str) -> dict:
+    """스타일 이름 -> id. 제목(개요 1~4)·목차(차례 1~2) 스타일 태그에 쓴다.
+
+    스타일 태그는 겉모습을 바꾸지 않는다 (서식은 문단·글자모양이 정한다).
+    다만 한/글 [도구]-[제목 차례]의 '스타일로 모으기'가 이 태그로 제목을 찾는다.
+    문단모양의 heading 을 OUTLINE 으로 바꾸면 한/글이 개요 번호를 덧붙여
+    본문의 번호와 겹쳐 보이므로, 스타일 태그만 쓴다.
+    """
+    out = {}
+    for m in re.finditer(r"<hh:style ([^>]*?)/?>", header):
+        i = re.search(r'id="(\d+)"', m.group(1))
+        n = re.search(r'name="([^"]*)"', m.group(1))
+        if i and n:
+            out.setdefault(n.group(1), i.group(1))
     return out
 
 
@@ -535,3 +576,123 @@ def longest_word_width(text: str, height: int, bold: bool, regular: Font, boldfo
         if w > best:
             best, word = w, token
     return best, word
+
+
+# --- 제목·목차·리스트 계층 ------------------------------------------------------
+
+# 리스트 머리 글자 판별. 뒤에 공백이 붙은 형태만 리스트로 본다.
+BULLET_MARKER_RE = re.compile(r"^[●\-·] ")
+ORDERED_MARKER_RE = re.compile(rf"^(\d{{1,2}}[.)]|[{GANADA}]\.) ")
+
+
+def ordered_marker(level: int, n: int) -> str:
+    """번호 목록의 단계별 머리 글자. 1수준 `1.` / 2수준 `가.` / 3·4수준 `1)`.
+
+    2수준이 14(하)를 넘으면 숫자로 되돌린다.
+    """
+    if level == 2:
+        return GANADA[n - 1] + "." if 1 <= n <= len(GANADA) else f"{n}."
+    if level >= 3:
+        return f"{n})"
+    return f"{n}."
+
+
+def marker_hang(marker: str, regular: Font, boldfont: Font) -> int:
+    """머리 글자(기호·번호)와 뒤 공백의 폭. 내어쓰기 값으로 쓴다."""
+    w, _ = text_width(marker + " ", BODY_TEXT_HEIGHT, False, regular, boldfont)
+    return math.ceil(w)
+
+
+def list_level_of(margins: dict) -> int:
+    """리스트 문단모양의 여백에서 단계를 되짚는다.
+
+    새 규칙: left = (단계-1)*STEP + 내어쓰기, intent = -내어쓰기
+    -> left + intent = (단계-1)*STEP
+    """
+    base = margins.get("left", 0) + margins.get("intent", 0)
+    return max(1, min(4, round(base / LIST_INDENT_STEP) + 1))
+
+
+def para_visible_runs(body: str, char_prs: dict) -> list:
+    """(CharPr, 텍스트) 목록. 글자가 없는 run 과 표를 담은 run 은 제외."""
+    head = body.split("<hp:linesegarray>")[0]
+    out = []
+    for m in re.finditer(r'<hp:run charPrIDRef="(\d+)">((?:(?!</hp:run>).)*)</hp:run>', head, re.S):
+        if "<hp:tbl" in m.group(2):
+            continue
+        text = unescape("".join(re.findall(r"<hp:t>([^<]*)</hp:t>", m.group(2))))
+        if text:
+            out.append((char_prs.get(m.group(1)), text))
+    return out
+
+
+def heading_level_of(body: str, char_prs: dict):
+    """제목 문단이면 수준(1~4), 아니면 None.
+
+    크기·굵기로 판정한다 (15/12/10.5pt bold). 10.5pt 는 3·4수준이 같은
+    서식이므로 번호 깊이(1.1.1.1)로 가른다. 번호가 없으면 3수준으로 본다.
+    """
+    runs = [r for r in para_visible_runs(body, char_prs) if r[0]]
+    if not runs:
+        return None
+    combos = {(cp.height, cp.bold) for cp, _ in runs}
+    if len(combos) != 1:
+        return None
+    height, bold = combos.pop()
+    if not bold:
+        return None
+    level = {1500: 1, 1200: 2, 1050: 3}.get(height)
+    if level == 3 and re.match(r"\d+(\.\d+){3}", "".join(t for _, t in runs)):
+        level = 4
+    return level
+
+
+def text_width_of(section: str) -> int:
+    """본문 가용 폭 (쪽 폭 - 좌우 여백)."""
+    m = re.search(r'<hp:pagePr[^>]*width="(\d+)"[^>]*>.*?<hp:margin[^>]*left="(\d+)" right="(\d+)"', section, re.S)
+    if not m:
+        return 42520
+    return int(m.group(1)) - int(m.group(2)) - int(m.group(3))
+
+
+def relayout_paragraph(para_xml: str, char_prs: dict, regular: Font, boldfont: Font, horzsize=None) -> str:
+    """글자나 여백을 바꾼 문단의 줄 배치 정보를 다시 만든다.
+
+    글자가 바뀌거나 가용 폭이 좁아지면 원래 줄 배치가 그대로 남아
+    여러 줄이 한 자리에 겹쳐 그려진다. horzsize 를 주면 그 폭으로 다시 접는다.
+    글꼴·크기·정렬은 그대로 두고 줄 수와 세로 위치만 고친다.
+    """
+    parts = para_xml.split("<hp:linesegarray>")
+    if len(parts) < 2:
+        return para_xml
+    head = parts[0]
+    inner, _, rest = parts[1].partition("</hp:linesegarray>")
+    first = re.search(r"<hp:lineseg ([^>]*)/>", inner)
+    if not first:
+        return para_xml
+    attrs = first.group(1)
+
+    def num(name, default):
+        m = re.search(rf'{name}="(-?\d+)"', attrs)
+        return int(m.group(1)) if m else default
+
+    vertsize = num("vertsize", 1000)
+    textheight = num("textheight", vertsize)
+    baseline = num("baseline", round(vertsize * 0.85))
+    spacing = num("spacing", 0)
+    horzpos = num("horzpos", 0)
+    if horzsize is None:
+        horzsize = num("horzsize", 42520)
+    vertpos0 = num("vertpos", 0)
+    flags = (re.search(r'flags="(\d+)"', attrs) or [None, "393216"])[1]
+
+    text, widths = paragraph_runs(head, char_prs, regular, boldfont)
+    starts = wrap_widths(text, widths, horzsize)
+    line_h = vertsize + spacing
+    segs = "".join(
+        f'<hp:lineseg textpos="{pos}" vertpos="{vertpos0 + i * line_h}" vertsize="{vertsize}"'
+        f' textheight="{textheight}" baseline="{baseline}" spacing="{spacing}"'
+        f' horzpos="{horzpos}" horzsize="{horzsize}" flags="{flags}"/>'
+        for i, pos in enumerate(starts)
+    )
+    return head + "<hp:linesegarray>" + segs + "</hp:linesegarray>" + rest

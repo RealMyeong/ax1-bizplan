@@ -2,6 +2,11 @@
 
     python apply_artifact_format.py <입력.hwpx> [-o 출력.hwpx] [--in-place]
 
+글꼴·줄간격·표 서식에 더해 제목 문단 서식(위아래 간격·개요 스타일·장 쪽나눔),
+목차 항목(장 굵게 + 절 들여쓰기 2단계, 본문 제목에서 재생성), 리스트 계층
+(단계별 기호 ● - · · 와 내어쓰기)을 기존 문서에 소급 적용한다.
+목차 항목을 재생성하면 문단 수가 원본과 달라질 수 있다. 로그에 증감을 남긴다.
+
 표지~목차 불가침 구간은 글자 깨짐 교정만 하고 서식은 건드리지 않는다.
 적용 후 check_artifact_format.py 로 반드시 재검사한다.
 """
@@ -57,7 +62,16 @@ class ParaPrPool:
     def _strip_id(block: str) -> str:
         return re.sub(r'^<hh:paraPr id="\d+"', '<hh:paraPr', block)
 
-    def _render(self, pid: str, spacing: int, align) -> str:
+    def margins_of(self, pid) -> dict:
+        """intent(내어쓰기)/left/prev(위)/next(아래) 여백. 단위 HWPUNIT."""
+        body = self.blocks.get(pid, "")
+        out = {}
+        for name in ("intent", "left", "prev", "next"):
+            m = re.search(rf'<hc:{name} value="(-?\d+)"', body)
+            out[name] = int(m.group(1)) if m else 0
+        return out
+
+    def _render(self, pid: str, spacing: int, align, margins=None) -> str:
         block = self.blocks[pid]
         block = re.sub(
             r'(<hh:lineSpacing type="PERCENT" value=")-?\d+(")',
@@ -66,19 +80,25 @@ class ParaPrPool:
         )
         if align:
             block = re.sub(r'(<hh:align horizontal=")\w+(")', lambda m: m.group(1) + align + m.group(2), block)
+        if margins:
+            # 여백은 hp:switch 의 case/default 두 분기에 중복돼 있어 모두 치환한다
+            for name, val in margins.items():
+                if val is None:
+                    continue
+                block = re.sub(rf'(<hc:{name} value=")-?\d+(")', lambda m, v=val: m.group(1) + str(v) + m.group(2), block)
         return block
 
-    def variant(self, pid: str, spacing: int, align=None) -> str:
-        """줄간격/정렬이 맞는 문단모양 id 를 돌려준다.
+    def variant(self, pid: str, spacing: int, align=None, margins=None) -> str:
+        """줄간격/정렬/여백이 맞는 문단모양 id 를 돌려준다.
 
         내용이 똑같은 문단모양이 이미 있으면 그것을 재사용한다. 매번 복제하면
         같은 파일에 두 번 적용했을 때 쓰이지 않는 문단모양이 계속 쌓인다.
         """
-        key = (pid, spacing, align)
+        key = (pid, spacing, align, tuple(sorted(margins.items())) if margins else None)
         if key in self.cache:
             return self.cache[key]
 
-        want = self._strip_id(self._render(pid, spacing, align))
+        want = self._strip_id(self._render(pid, spacing, align, margins))
         for other_id, block in self.blocks.items():
             if self._strip_id(block) == want:
                 self.cache[key] = other_id
@@ -86,7 +106,7 @@ class ParaPrPool:
 
         new_id = str(self.next_id)
         self.next_id += 1
-        block = re.sub(r'^<hh:paraPr id="\d+"', f'<hh:paraPr id="{new_id}"', self._render(pid, spacing, align))
+        block = re.sub(r'^<hh:paraPr id="\d+"', f'<hh:paraPr id="{new_id}"', self._render(pid, spacing, align, margins))
         self.blocks[new_id] = block
         self.new_blocks.append(block)
         self.cache[key] = new_id
@@ -161,6 +181,222 @@ def ensure_header_fill(header: str, front_fills: set, log: list):
         f"표지~목차가 쓰는 borderFill {template.group(1)} 은 그대로 둠"
     )
     return header, new_id
+
+
+def esc(s: str) -> str:
+    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def ensure_body_chars(header: str, log: list):
+    """맑은 고딕 10pt 보통/굵게 글자모양 id 를 확보한다. 굵게가 없으면 보통을 복제한다.
+
+    목차 장 항목(굵게)과 절 항목(보통)을 재생성할 때 쓴다.
+    """
+    char_prs = H.parse_char_prs(header)
+    malgun = H.malgun_font_ids(header)
+    plain = bold = None
+    for cid, cp in sorted(char_prs.items(), key=lambda x: int(x[0])):
+        if cp.height != H.BODY_TEXT_HEIGHT or not set(cp.font_ids) <= malgun:
+            continue
+        if cp.bold and bold is None:
+            bold = cid
+        elif not cp.bold and plain is None:
+            plain = cid
+    if plain is None:
+        log.append(f"[경고] {H.FONT_FACE} 10pt 글자모양이 없어 목차 항목을 재생성하지 못함")
+        return header, None, None
+    if bold is None:
+        m = re.search(rf'<hh:charPr id="{plain}".*?</hh:charPr>', header, re.S)
+        new_id = str(max(int(i) for i in char_prs) + 1)
+        block = re.sub(r'^<hh:charPr id="\d+"', f'<hh:charPr id="{new_id}"', m.group(0))
+        if "<hh:underline" in block:
+            block = block.replace("<hh:underline", "<hh:bold/><hh:underline", 1)
+        else:
+            block = block.replace("</hh:charPr>", "<hh:bold/></hh:charPr>", 1)
+        mm = re.search(r'<hh:charProperties itemCnt="(\d+)">', header)
+        header = header.replace(mm.group(0), f'<hh:charProperties itemCnt="{int(mm.group(1)) + 1}">', 1)
+        header = header.replace("</hh:charProperties>", block + "</hh:charProperties>", 1)
+        log.append(f"{H.FONT_FACE} 10pt 굵게 글자모양 {new_id} 생성 (목차 장 항목용)")
+        bold = new_id
+    return header, plain, bold
+
+
+def retrofit_hierarchy(section: str, pool: ParaPrPool, char_prs: dict, styles: dict,
+                       body_start: int, regular: H.Font, boldfont: H.Font,
+                       plain_cid, bold_cid, log: list) -> str:
+    """제목·목차·리스트 계층을 기존 문서에 소급 적용한다.
+
+    - 제목(15/12/10.5pt 굵게): 위아래 간격, 개요 스타일 태그, 장 쪽나눔
+    - 목차 항목: 본문 장·절 제목에서 재생성 (장 굵게, 절 들여쓰기).
+      문단 수가 원본과 달라질 수 있으므로 증감을 로그에 남긴다
+    - 리스트: 단계별 기호(● - · ·)와 내어쓰기. 번호 목록도 내어쓰기 적용
+    """
+    width = H.text_width_of(section)
+    spans = H.table_spans(section)
+
+    paras = []  # (시작, 여는태그 끝, 속성, 본문)
+    for a, attrs, body in H.paragraphs(section):
+        paras.append((a, a + 7 + len(attrs), attrs, body))  # 7 = len("<hp:p ") + len(">")
+
+    headings = []  # (paras 인덱스, 수준, 제목 글자)
+    for i, (a, ta, attrs, body) in enumerate(paras):
+        if a < body_start or H.in_any_span(spans, a):
+            continue
+        level = H.heading_level_of(body, char_prs)
+        if level:
+            headings.append((i, level, "".join(t for _, t in H.para_visible_runs(body, char_prs))))
+    if not headings:
+        log.append("[경고] 제목 문단(15/12/10.5pt 굵게)을 찾지 못해 제목·목차·리스트 계층을 건너뜀")
+        return section
+
+    first_heading_at = paras[headings[0][0]][0]
+    edits = []  # (시작, 끝, 대체 문자열)
+
+    # 1) 제목 문단
+    fixed_headings = 0
+    for i, level, _text in headings:
+        a, ta, attrs, body = paras[i]
+        pid = re.search(r'paraPrIDRef="(\d+)"', attrs).group(1)
+        prev_v, next_v = H.HEADING_MARGIN[level]
+        new_pid = pool.variant(pid, pool.spacing_of(pid) or H.BODY_LINE_SPACING, None,
+                               margins={"left": 0, "intent": 0, "prev": prev_v, "next": next_v})
+        new_attrs = re.sub(r'paraPrIDRef="\d+"', f'paraPrIDRef="{new_pid}"', attrs)
+        sid = styles.get(H.HEADING_STYLE[level])
+        if sid:
+            new_attrs = re.sub(r'styleIDRef="\d+"', f'styleIDRef="{sid}"', new_attrs)
+        if level == 1:
+            new_attrs = re.sub(r'pageBreak="\d+"', 'pageBreak="1"', new_attrs)
+        if new_attrs != attrs:
+            edits.append((a, ta, f"<hp:p {new_attrs}>"))
+            fixed_headings += 1
+    log.append(f"제목 문단 서식(간격·개요 스타일·장 쪽나눔) : {fixed_headings}/{len(headings)}개 수정")
+
+    # 2) 목차 항목 재생성 - 기존 항목이 있을 때만. --no-toc 문서는 그대로 둔다
+    expected = [(lv, tx) for _, lv, tx in headings if lv <= 2]
+    toc_list = [(i,) + paras[i][0:1] for i, (a, ta, attrs, body) in enumerate(paras)
+                if body_start <= a < first_heading_at and not H.in_any_span(spans, a)]
+    toc_idx = [i for i, _ in toc_list]
+    if toc_idx and plain_cid and bold_cid and expected:
+        got = []
+        bad = None
+        for i in toc_idx:
+            a, ta, attrs, body = paras[i]
+            text = "".join(t for _, t in H.para_visible_runs(body, char_prs))
+            if not text.strip():
+                continue
+            if not re.match(r"\d", text):
+                bad = text
+                break
+            got.append((i, text))
+        if bad is not None:
+            log.append(f"[경고] 목차 구간에 제목이 아닌 문단이 있어 목차를 재생성하지 않음 :: {bad[:30]}")
+        else:
+            regen = [tx for _, tx in got] != [tx for _, tx in expected]
+            if not regen:
+                for (i, _text), (lv, _tx) in zip(got, expected):
+                    a, ta, attrs, body = paras[i]
+                    pid = re.search(r'paraPrIDRef="(\d+)"', attrs).group(1)
+                    runs = [r for r in H.para_visible_runs(body, char_prs) if r[0]]
+                    is_bold = bool(runs) and all(cp.bold for cp, _ in runs)
+                    left = pool.margins_of(pid)["left"]
+                    if (lv == 1) != is_bold or (H.TOC_INDENT if lv == 2 else 0) != left:
+                        regen = True
+                        break
+            if regen:
+                base_pid = re.search(r'paraPrIDRef="(\d+)"', paras[toc_idx[0]][2]).group(1)
+                spacing = pool.spacing_of(base_pid) or H.BODY_LINE_SPACING
+                sp = round(H.BODY_TEXT_HEIGHT * (spacing - 100) / 100)
+                line_h = H.BODY_TEXT_HEIGHT + sp
+                out = []
+                for k, (lv, text) in enumerate(expected):
+                    left = 0 if lv == 1 else H.TOC_INDENT
+                    cid = bold_cid if lv == 1 else plain_cid
+                    new_pid = pool.variant(base_pid, spacing, None,
+                                           margins={"left": left, "intent": 0, "prev": 0, "next": 0})
+                    sid = styles.get(H.TOC_STYLE[lv], "0")
+                    avail = width - left
+                    segs = "".join(
+                        f'<hp:lineseg textpos="{p}" vertpos="{j * line_h}" vertsize="{H.BODY_TEXT_HEIGHT}"'
+                        f' textheight="{H.BODY_TEXT_HEIGHT}" baseline="{round(H.BODY_TEXT_HEIGHT * 0.85)}"'
+                        f' spacing="{sp}" horzpos="0" horzsize="{avail}" flags="393216"/>'
+                        for j, p in enumerate(H.wrap_lines(text, H.BODY_TEXT_HEIGHT, lv == 1, regular, boldfont, avail))
+                    )
+                    out.append(
+                        f'<hp:p id="{1300000000 + k}" paraPrIDRef="{new_pid}" styleIDRef="{sid}"'
+                        f' pageBreak="0" columnBreak="0" merged="0">'
+                        f'<hp:run charPrIDRef="{cid}"><hp:t>{esc(text)}</hp:t></hp:run>'
+                        f"<hp:linesegarray>{segs}</hp:linesegarray></hp:p>"
+                    )
+                n1 = sum(1 for lv, _ in expected if lv == 1)
+                edits.append((paras[toc_idx[0]][0], first_heading_at, "".join(out)))
+                log.append(
+                    f"목차 항목 재생성: 기존 {len(got)}개 -> 장 {n1} + 절 {len(expected) - n1} = "
+                    f"{len(expected)}개 (문단 수 {len(expected) - len(toc_idx):+d})"
+                )
+            else:
+                log.append(f"목차 항목 {len(got)}개 규칙 충족 (재생성 없음)")
+    elif not toc_idx:
+        log.append("목차 항목이 없는 문서 (--no-toc). 목차는 만들지 않음")
+
+    # 3) 리스트 - 불릿 기호와 내어쓰기
+    fixed_bullets = fixed_ordered = 0
+    for i, (a, ta, attrs, body) in enumerate(paras):
+        if a < first_heading_at or H.in_any_span(spans, a):
+            continue
+        runs = [r for r in H.para_visible_runs(body, char_prs) if r[0]]
+        if not runs:
+            continue
+        cp0 = runs[0][0]
+        if cp0.height != H.BODY_TEXT_HEIGHT or cp0.bold:
+            continue
+        text = "".join(t for _, t in runs)
+        m_b = H.BULLET_MARKER_RE.match(text)
+        m_o = None if m_b else H.ORDERED_MARKER_RE.match(text)
+        if not m_b and not m_o:
+            continue
+        pid = re.search(r'paraPrIDRef="(\d+)"', attrs).group(1)
+        margins = pool.margins_of(pid)
+        old_marker = text.split(" ", 1)[0]
+        if m_b:
+            if margins["intent"] < 0:
+                level = H.list_level_of(margins)
+                if old_marker == H.BULLETS[level]:
+                    continue  # 이미 규칙 충족
+            else:
+                # 옛 방식: 왼쪽여백 = 단계*1000, 기호는 · 고정
+                level = max(1, min(4, margins["left"] // H.LIST_INDENT_STEP or 1))
+            marker = H.BULLETS[level]
+        else:
+            if margins["intent"] < 0:
+                continue  # 이미 규칙 충족
+            level = 1  # 옛 문서의 번호 목록은 들여쓰기 정보가 없어 1수준으로 본다
+            marker = old_marker
+        hang = H.marker_hang(marker, regular, boldfont)
+        left = (level - 1) * H.LIST_INDENT_STEP + hang
+        new_pid = pool.variant(pid, pool.spacing_of(pid) or H.BODY_LINE_SPACING, None,
+                               margins={"left": left, "intent": -hang, "prev": 0, "next": 0})
+        new_attrs = re.sub(r'paraPrIDRef="\d+"', f'paraPrIDRef="{new_pid}"', attrs)
+        close = body.find("</hp:p>")
+        if close < 0:
+            continue
+        para_xml = f"<hp:p {new_attrs}>" + body[: close + 7]
+        if marker != old_marker:
+            replaced = para_xml.replace(f"<hp:t>{old_marker} ", f"<hp:t>{marker} ", 1)
+            if replaced == para_xml:
+                log.append(f"[경고] 불릿 기호를 바꾸지 못한 문단 :: {text[:30]}")
+                continue
+            para_xml = replaced
+        para_xml = H.relayout_paragraph(para_xml, char_prs, regular, boldfont, horzsize=width - left)
+        edits.append((a, ta + close + 7, para_xml))
+        if m_b:
+            fixed_bullets += 1
+        else:
+            fixed_ordered += 1
+    log.append(f"리스트 내어쓰기 적용: 불릿 {fixed_bullets}개, 번호 {fixed_ordered}개")
+
+    for a, b, repl in sorted(edits, key=lambda e: e[0], reverse=True):
+        section = section[:a] + repl + section[b:]
+    return section
 
 
 def replace_missing_glyphs(text: str, regular: H.Font, log: list, label: str) -> str:
@@ -293,6 +529,7 @@ def apply(src: Path, dst: Path) -> list:
     header, fill_id = ensure_header_fill(header, front_fills, log)
     fill_ids = H.shaded_fill_ids(header)  # 라벨열 판정은 색을 가리지 않는다
 
+    header, plain_cid, bold_cid = ensure_body_chars(header, log)
     char_prs = H.parse_char_prs(header)
     spans = H.table_spans(section)
     pool = ParaPrPool(header)
@@ -310,10 +547,18 @@ def apply(src: Path, dst: Path) -> list:
             pool.set_spacing(pid, H.BODY_LINE_SPACING)
     log.append(f"본문 문단 줄간격 {H.BODY_LINE_SPACING}% : 문단모양 {len(body_ids)}개")
 
-    # 6. 표 - 머리행 서식 / 셀 줄간격 120% / 열 너비
+    # 5-1. 제목·목차·리스트 계층
+    styles = H.style_ids_by_name(header)
+    section = retrofit_hierarchy(section, pool, char_prs, styles, body_start,
+                                 regular, boldfont, plain_cid, bold_cid, log)
+    spans = H.table_spans(section)  # 목차 재생성으로 오프셋이 밀렸을 수 있다
+    body_start = H.body_start_offset(section)
+
+    # 6. 표 - 글자처럼 취급 / 머리행 서식 / 셀 줄간격 / 열 너비
     pieces, last = [], 0
     widened = 0
     header_rows = 0
+    treat_fixed = 0
     for (start, end) in spans:
         tbl = section[start:end]
         if start < body_start:
@@ -322,6 +567,12 @@ def apply(src: Path, dst: Path) -> list:
             continue
 
         label_col = H.is_label_column_table(tbl, fill_ids)
+
+        # 6-0. 글자처럼 취급 On. 첫 hp:pos 가 표 자신의 것이다
+        fixed = re.sub(r'(<hp:pos treatAsChar=")0(")', r"\g<1>1\g<2>", tbl, count=1)
+        if fixed != tbl:
+            tbl = fixed
+            treat_fixed += 1
 
         # 6-1. 머리행: 음영 + 세로 중간 + 가로 가운데 + 셀 줄간격
         tr_a = tbl.find("<hp:tr>")
@@ -373,6 +624,7 @@ def apply(src: Path, dst: Path) -> list:
     section = "".join(pieces)
     log.append(f"표 머리행 서식(음영·세로중간·가로가운데) : {header_rows}개 표")
     log.append(f"표 셀 줄간격 {H.CELL_LINE_SPACING}% 적용, 열 너비 재배분 {widened}개 표")
+    log.append(f"표 글자처럼 취급 On : {treat_fixed}개 표 수정")
 
     # 7. 본문(표 밖) 줄 배치 캐시
     spans = H.table_spans(section)

@@ -158,11 +158,94 @@ def check(path: Path) -> list:
                 f"글자 폭이 배치된 줄 용량의 {total / capacity:.1f}배 :: {text[:34]}",
             )
 
-    # 5. 표 머리행 - 음영 / 세로 중간 / 가로 가운데, 6. 열 너비
+    # 4-2. 제목 문단 - 위아래 간격 / 개요 스타일 / 장 쪽나눔
+    styles = H.style_ids_by_name(header)
+    all_paras = H.paragraphs(section)
+    headings = []
+    for off, attrs, body in all_paras:
+        if off < body_start or H.in_any_span(spans, off):
+            continue
+        level = H.heading_level_of(body, char_prs)
+        if level:
+            headings.append((off, attrs, level, "".join(t for _, t in H.para_visible_runs(body, char_prs))))
+
+    for off, attrs, level, text in headings:
+        pid_m = H.re.search(r'paraPrIDRef="(\d+)"', attrs)
+        pp = para_prs.get(pid_m.group(1), {}) if pid_m else {}
+        want_prev, want_next = H.HEADING_MARGIN[level]
+        if (pp.get("prev"), pp.get("next")) != (want_prev, want_next):
+            add(
+                "제목 간격",
+                f"{level}수준 제목의 위/아래 간격이 {pp.get('prev')}/{pp.get('next')} (규칙 {want_prev}/{want_next})",
+                text[:24],
+            )
+        sid = styles.get(H.HEADING_STYLE[level])
+        if sid:
+            got = H.re.search(r'styleIDRef="(\d+)"', attrs)
+            if not got or got.group(1) != sid:
+                add("제목 스타일", f"{level}수준 제목에 '{H.HEADING_STYLE[level]}' 스타일 태그가 없음", text[:24])
+        if level == 1 and not H.re.search(r'pageBreak="1"', attrs):
+            add("제목 쪽나눔", "장 제목이 새 쪽에서 시작하지 않음", text[:24])
+
+    first_heading_off = headings[0][0] if headings else None
+
+    # 4-3. 목차 항목 - 장 굵게 / 절 들여쓰기, 본문 장·절 제목과 일치
+    if first_heading_off is not None:
+        expected = [(lv, tx) for _, _, lv, tx in headings if lv <= 2]
+        toc = []
+        for off, attrs, body in all_paras:
+            if not (body_start <= off < first_heading_off) or H.in_any_span(spans, off):
+                continue
+            runs = [r for r in H.para_visible_runs(body, char_prs) if r[0]]
+            text = "".join(t for _, t in runs)
+            if text.strip():
+                toc.append((attrs, runs, text))
+        if toc:
+            if [t for _, _, t in toc] != [tx for _, tx in expected]:
+                add("목차", f"목차 항목 {len(toc)}개가 본문 장·절 제목 {len(expected)}개와 일치하지 않음")
+            else:
+                for (attrs, runs, text), (lv, _tx) in zip(toc, expected):
+                    pid_m = H.re.search(r'paraPrIDRef="(\d+)"', attrs)
+                    left = para_prs.get(pid_m.group(1), {}).get("left", 0) if pid_m else 0
+                    bold = all(cp.bold for cp, _ in runs)
+                    if lv == 1 and not bold:
+                        add("목차", "장 항목이 굵게가 아님", text[:24])
+                    if lv == 2 and left != H.TOC_INDENT:
+                        add("목차", f"절 항목 들여쓰기가 {left} (규칙 {H.TOC_INDENT})", text[:24])
+
+    # 4-4. 리스트 - 내어쓰기와 단계별 기호
+    if first_heading_off is not None:
+        for off, attrs, body in all_paras:
+            if off < first_heading_off or H.in_any_span(spans, off):
+                continue
+            runs = [r for r in H.para_visible_runs(body, char_prs) if r[0]]
+            if not runs:
+                continue
+            cp0 = runs[0][0]
+            if cp0.height != H.BODY_TEXT_HEIGHT or cp0.bold:
+                continue
+            text = "".join(t for _, t in runs)
+            is_bullet = H.BULLET_MARKER_RE.match(text)
+            if not is_bullet and not H.ORDERED_MARKER_RE.match(text):
+                continue
+            pid_m = H.re.search(r'paraPrIDRef="(\d+)"', attrs)
+            pp = para_prs.get(pid_m.group(1), {}) if pid_m else {}
+            if pp.get("intent", 0) >= 0:
+                add("리스트", "머리 글자가 있는데 내어쓰기(intent 음수)가 없음", text[:24])
+                continue
+            if is_bullet:
+                level = H.list_level_of(pp)
+                if text[0] != H.BULLETS[level]:
+                    add("리스트", f"{level}수준 불릿 기호가 {text[0]!r} (규칙 {H.BULLETS[level]!r})", text[:24])
+
+    # 5. 표 머리행 - 음영 / 세로 중간 / 가로 가운데, 6. 열 너비, 표 속성
     for tno, tbl in enumerate(H.tables(section), start=1):
         offset = spans[tno - 1][0]
         if offset < body_start:
             continue
+        m = H.re.search(r'<hp:pos treatAsChar="(\d)"', tbl)
+        if m and m.group(1) != "1":
+            add("표 속성", "글자처럼 취급이 꺼져 있음", f"표 {tno}")
         if H.is_label_column_table(tbl, shaded_ids):
             continue  # 라벨열 표는 머리행이 없다
 

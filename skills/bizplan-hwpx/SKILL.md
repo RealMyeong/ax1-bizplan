@@ -2,7 +2,7 @@
 name: bizplan-hwpx
 description: 국가 R&D·공모 사업계획서는 제출기관의 공식 HWPX 양식을 보존해 작성하고, 정의서·보고서·회의록 등 AX1 일반 산출물은 포함된 승인 AX1 산출물 템플릿으로 한컴오피스·COM 없이 생성하거나 안전하게 편집·검증한다. 사용자가 한글 양식, HWPX 작성본·수정본·제출본 또는 AX1 산출물 양식 적용을 요청할 때 사용한다. 사업 아이디어 구체화나 본문 초안만 필요하면 bizplan-draft를 사용하고, 바이너리 HWP 직접 편집에는 사용하지 않는다.
 metadata:
-  version: "0.4.1"
+  version: "0.4.2"
   architecture: "ax1-policy-wrapper-with-approved-stdlib-builder"
   updated: "2026-09-02"
 ---

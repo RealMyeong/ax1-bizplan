@@ -319,6 +319,18 @@ def main() -> int:
         if "##############################" in section:
             raise AssertionError("사용자 검토 마커가 생성 결과에 남음")
 
+        original_malgun = H.MALGUN
+        original_malgun_bold = H.MALGUN_BOLD
+        try:
+            H.MALGUN = temp / "missing-malgun.ttf"
+            H.MALGUN_BOLD = temp / "missing-malgunbd.ttf"
+            portable_issues = C.check(output)
+        finally:
+            H.MALGUN = original_malgun
+            H.MALGUN_BOLD = original_malgun_bold
+        if portable_issues:
+            raise AssertionError(f"대체 글꼴 환경 구조 검사 실패: {portable_issues!r}")
+
         front_para_ids = set(
             H.re.findall(r'paraPrIDRef="(\d+)"', section[: H.body_start_offset(section)])
         )

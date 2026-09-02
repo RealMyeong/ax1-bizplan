@@ -175,13 +175,15 @@ def check(path: Path) -> list:
         if width_match
         else 42520
     )
-    bullet_prefix_width, _ = H.text_width(
-        "• ",
-        H.BODY_TEXT_HEIGHT,
-        False,
-        regular,
-        boldfont,
-    )
+    bullet_prefix_width = None
+    if not regular.portable:
+        bullet_prefix_width, _ = H.text_width(
+            "• ",
+            H.BODY_TEXT_HEIGHT,
+            False,
+            regular,
+            boldfont,
+        )
     for offset, attrs, body in H.paragraphs(section):
         if offset < body_start or H.in_any_span(spans, offset):
             continue
@@ -254,7 +256,13 @@ def check(path: Path) -> list:
                     f"{props.get('left')}·{props.get('intent')} (규칙 "
                     f"{H.BODY_LIST_LEFT_INDENT}·{H.BODY_LIST_FIRST_LINE_INDENT})",
                 )
-            if abs(H.BODY_LIST_BULLET_POSITION + bullet_prefix_width - H.BODY_LIST_LEFT_INDENT) > 100:
+            if H.BODY_LIST_BULLET_POSITION != (
+                H.BODY_LIST_LEFT_INDENT + H.BODY_LIST_FIRST_LINE_INDENT
+            ):
+                add("본문 목록 들여쓰기", "글머리표 위치와 문단 hanging indent 상수의 관계가 일치하지 않음")
+            if bullet_prefix_width is not None and abs(
+                H.BODY_LIST_BULLET_POSITION + bullet_prefix_width - H.BODY_LIST_LEFT_INDENT
+            ) > 100:
                 add("본문 목록 들여쓰기", "글머리표 폭과 후속 줄 본문 시작 위치가 1 HWPUNIT 기준값을 초과함")
             line_segs = [
                 (int(match.group(1)), int(match.group(2)), int(match.group(3)))

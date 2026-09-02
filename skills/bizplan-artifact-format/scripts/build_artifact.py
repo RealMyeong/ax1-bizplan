@@ -9,8 +9,10 @@
 지원하는 마크다운
     #/##/###/####  장·절·항 제목 (4수준은 3수준과 같은 서식)
     | ... |     표 (첫 줄이 머리행)      빈 줄 구분   본문 문단
-    -, *        불릿 리스트. 들여쓰기 2칸마다 한 단계, 기호 ● - · ·
+    -, *        불릿 리스트. 들여쓰기 2칸마다 한 단계, 기호는 모든 단계 •
     1. 2. 3.    번호 목록. 단계별 1. 가. 1) 로 바꾸고 내어쓰기를 준다
+개정 이력표에는 오늘 날짜와 v0.1(양식이 비어 있을 때)을 기입하고, 출력 파일
+이름의 버전 조각도 같은 값으로 맞춘다.
 아직 안 되는 것: 그림, 쪽번호, 병합 셀, 각주
 """
 
@@ -275,10 +277,12 @@ class Emitter:
             f"{run}{self._linesegs(text, height, bold, width)}</hp:p>"
         )
 
-    def heading(self, level: int, text: str) -> str:
+    def heading(self, level: int, text: str, after_h1: bool = False) -> str:
         level = min(level, 4)
         height = H.HEADING_HEIGHT[level]
         prev, next_ = H.HEADING_MARGIN[level]
+        if level == 2 and after_h1:
+            prev = H.H2_AFTER_H1_PREV  # 장 바로 다음의 절은 위 간격을 줄인다
         return self.para(
             text,
             self.pool.para_variant(prev=prev, next_=next_),
@@ -504,7 +508,8 @@ def fill_cover(section: str, header: str, title: str, project: str, log: list) -
     return section
 
 
-def build(template: Path, content: Path, out: Path, title="", project="", make_toc=True) -> list:
+def build(template: Path, content: Path, out: Path, title="", project="", make_toc=True,
+          rev_note="최초 작성", rev_author="", revision=True) -> list:
     log = []
     entries = H.read_hwpx(template)
     header = H.get_text(entries, H.HEADER)
@@ -534,19 +539,38 @@ def build(template: Path, content: Path, out: Path, title="", project="", make_t
         n1 = sum(1 for lv, _ in toc_items if lv == 1)
         log.append(f"목차 항목 {len(toc_items)}개 생성 (장 {n1}, 절 {len(toc_items) - n1})")
 
+    prev_h = None  # 직전 블록이 장 제목이면 다음 절 제목의 위 간격을 줄인다
     for block in blocks:
         if block[0] == "h":
-            parts.append(emitter.heading(block[1], block[2]))
+            parts.append(emitter.heading(block[1], block[2], after_h1=(block[1] == 2 and prev_h == 1)))
+            prev_h = min(block[1], 4)
         elif block[0] == "p":
             parts.append(emitter.body(block[1]))
+            prev_h = None
         elif block[0] == "li":
             parts.append(emitter.item(block[1], block[2]))
+            prev_h = None
         elif block[0] == "ol":
             parts.append(emitter.ordered_item(block[1], block[2], block[3]))
+            prev_h = None
         elif block[0] == "table":
             parts.append(emitter.table(block[1], regular, boldfont))
+            prev_h = None
 
     section = fill_cover(section, header, title, project, log)
+
+    # 개정 이력 - 빈 양식이면 오늘 날짜와 v0.1 을 기입한다
+    version = None
+    if revision:
+        body_start = H.body_start_offset(section)
+        section, version = A.record_revision(section, body_start, header,
+                                             regular, boldfont, rev_note, rev_author, log)
+    if version:
+        wanted = H.versioned_name(out, version)
+        if wanted.name != out.name:
+            log.append(f"출력 이름을 개정 이력 버전에 맞춤: {out.name} -> {wanted.name}")
+            out = wanted
+
     if "</hs:sec>" not in section:
         raise SystemExit("section0.xml 에서 </hs:sec> 를 찾지 못했다")
     section = section.replace("</hs:sec>", "".join(parts) + "</hs:sec>", 1)
@@ -557,7 +581,7 @@ def build(template: Path, content: Path, out: Path, title="", project="", make_t
     log.append(f"양식 뒤에 본문 삽입 완료 -> {out}")
 
     log.append("--- 서식 적용 ---")
-    log += A.apply(out, out)
+    log += A.apply(out, out, revision=False)  # 개정 이력은 위에서 이미 기록했다
     return log
 
 
@@ -570,6 +594,9 @@ def main() -> int:
     ap.add_argument("--title", default="", help="표지 제목 자리표시자를 이 글자로 채움")
     ap.add_argument("--project", default="", help="표지의 [과제번호 ...] 줄 전체를 이 글자로 교체")
     ap.add_argument("--no-toc", action="store_true", help="목차 항목을 만들지 않음")
+    ap.add_argument("--rev-note", default="최초 작성", help="개정 이력의 개정내역 칸 (기본: 최초 작성)")
+    ap.add_argument("--rev-author", default="", help="개정 이력의 작성자 칸")
+    ap.add_argument("--no-revision", action="store_true", help="개정 이력·파일명 버전을 건드리지 않음")
     args = ap.parse_args()
 
     template = args.template or default_template()
@@ -583,7 +610,8 @@ def main() -> int:
             print(f"파일 없음: {p}")
             return 2
 
-    for line in build(template, args.content, args.out, args.title, args.project, not args.no_toc):
+    for line in build(template, args.content, args.out, args.title, args.project, not args.no_toc,
+                      args.rev_note, args.rev_author, not args.no_revision):
         print(line)
     print("\ncheck_artifact_format.py 로 검사하고 한/글에서 직접 열어 확인할 것")
     return 0

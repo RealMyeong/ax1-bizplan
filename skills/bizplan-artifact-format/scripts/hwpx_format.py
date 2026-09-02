@@ -29,15 +29,18 @@ ALLOWED_HEIGHTS = (1000, 1050, 1200, 1500)  # 본문 10 / 항 10.5 / 절 12 / �
 # HEADING_MARGIN 은 (문단 위, 문단 아래) 간격이며 단위는 HWPUNIT (1pt = 100).
 HEADING_HEIGHT = {1: 1500, 2: 1200, 3: 1050, 4: 1050}
 HEADING_MARGIN = {1: (0, 1000), 2: (1400, 500), 3: (1000, 300), 4: (1000, 300)}
+# 장 제목 바로 다음(빈 문단 제외)에 오는 절 제목은 위 간격을 줄인다.
+# 장 아래 간격 10pt 와 합쳐 18pt 가 된다 (기본 14pt 면 24pt 로 벌어진다).
+H2_AFTER_H1_PREV = 800
 HEADING_STYLE = {1: "개요 1", 2: "개요 2", 3: "개요 3", 4: "개요 4"}
 
 # 목차 항목 - 장(굵게)·절(들여쓰기) 2단계. 항 이하는 목차에 넣지 않는다.
 TOC_INDENT = 1000
 TOC_STYLE = {1: "차례 1", 2: "차례 2"}
 
-# 리스트 - 단계별 불릿 기호. 4수준 기호는 3수준과 같고 들여쓰기만 한 단계 더 는다.
+# 리스트 - 불릿 기호는 모든 단계에서 • 하나만 쓴다. 단계는 들여쓰기로 구분한다.
 # 접히는 줄이 글자 시작점에 맞춰지도록 내어쓰기(intent 음수)를 함께 쓴다.
-BULLETS = {1: "●", 2: "-", 3: "·", 4: "·"}
+BULLETS = {1: "•", 2: "•", 3: "•", 4: "•"}
 LIST_INDENT_STEP = 1000  # 단계당 왼쪽여백 증가분
 GANADA = "가나다라마바사아자차카타파하"
 
@@ -581,7 +584,8 @@ def longest_word_width(text: str, height: int, bold: bool, regular: Font, boldfo
 # --- 제목·목차·리스트 계층 ------------------------------------------------------
 
 # 리스트 머리 글자 판별. 뒤에 공백이 붙은 형태만 리스트로 본다.
-BULLET_MARKER_RE = re.compile(r"^[●\-·] ")
+# 규칙 기호는 • 하나지만, 옛 규칙(● - ·) 문서를 소급 변환해야 하므로 함께 잡는다.
+BULLET_MARKER_RE = re.compile(r"^[•●\-·] ")
 ORDERED_MARKER_RE = re.compile(rf"^(\d{{1,2}}[.)]|[{GANADA}]\.) ")
 
 
@@ -696,3 +700,138 @@ def relayout_paragraph(para_xml: str, char_prs: dict, regular: Font, boldfont: F
         for i, pos in enumerate(starts)
     )
     return head + "<hp:linesegarray>" + segs + "</hp:linesegarray>" + rest
+
+
+# --- 개정 이력 -----------------------------------------------------------------
+# 불가침 구간의 개정 이력표는 예외적으로 **내용 기입**만 허용한다. 서식(글꼴·크기·
+# 음영·정렬)은 양식 그대로 두고, 빈 행이 모자라면 마지막 행을 복제해 늘린다.
+
+REVISION_HEAD = ("개정일자", "버전")  # 개정 이력표 머리행의 앞 두 칸
+# 버전 표기는 v0.x 가 기본이다. 소수점 없는 v2 같은 값도 읽어서 v2.1 로 올린다.
+VERSION_RE = re.compile(r"[vV](\d+)(?:\.(\d+))?")
+# 파일 이름의 버전 조각. 구분자(_ - 공백)가 앞에 있어야 단어 속 v2 를 오인하지 않는다.
+NAME_VERSION_RE = re.compile(r"[_\- ][vV]\d+(?:\.\d+)?")
+
+
+def find_revision_table(section: str, limit=None):
+    """개정 이력표의 (시작, 끝) 오프셋. 머리행이 '개정일자 | 버전 | ...' 인 표.
+
+    limit(보통 body_start)를 주면 불가침 구간 안에서만 찾는다.
+    """
+    for a, b in table_spans(section):
+        if limit is not None and a >= limit:
+            break
+        head = sorted((c for c in cells(section[a:b]) if c.row == 0), key=lambda c: c.col)
+        texts = tuple(" ".join(t for _, t in c.runs()).strip() for c in head)
+        if texts[:2] == REVISION_HEAD:
+            return a, b
+    return None
+
+
+def revision_entries(tbl: str) -> list:
+    """기입된 (행 번호, [칸 글자 목록]). 머리행과 빈 행은 제외."""
+    rows = {}
+    for c in cells(tbl):
+        if c.row == 0:
+            continue
+        rows.setdefault(c.row, {})[c.col] = " ".join(t for _, t in c.runs()).strip()
+    out = []
+    for r in sorted(rows):
+        vals = [rows[r].get(i, "") for i in range(max(rows[r]) + 1)]
+        if any(vals):
+            out.append((r, vals))
+    return out
+
+
+def next_revision_row(tbl: str):
+    """다음에 기입할 빈 행 번호. 빈 행이 없으면 None (행 추가 필요)."""
+    filled = [r for r, _ in revision_entries(tbl)]
+    nxt = (max(filled) + 1) if filled else 1
+    return nxt if any(c.row == nxt for c in cells(tbl)) else None
+
+
+def bump_version(version: str) -> str:
+    """개정 버전을 한 단계 올린다. 기본 형식은 v0.x, 해석할 수 없으면 v0.1 부터."""
+    m = VERSION_RE.search(version or "")
+    if not m:
+        return "v0.1"
+    minor = int(m.group(2)) + 1 if m.group(2) else 1
+    return f"v{m.group(1)}.{minor}"
+
+
+def versioned_name(path: Path, version: str) -> Path:
+    """파일 이름의 버전 조각을 개정 이력 버전과 같게 맞춘다.
+
+    기존 조각(_v2, -v0.3 등)은 구분자를 유지한 채 바꾸고, 없으면 _v0.x 를 덧붙인다.
+    조각 뒤의 꼬리표(" #DXS" 등)는 그대로 남는다.
+    """
+    stem = path.stem
+    matches = list(NAME_VERSION_RE.finditer(stem))
+    if matches:
+        m = matches[-1]
+        stem = stem[: m.start()] + stem[m.start()] + version + stem[m.end():]
+    else:
+        stem = stem + "_" + version
+    return path.with_name(stem + path.suffix)
+
+
+def name_version_of(path: Path):
+    """파일 이름에서 버전 조각(v0.3 등)을 뽑는다. 없으면 None."""
+    matches = list(NAME_VERSION_RE.finditer(path.stem))
+    return matches[-1].group(0)[1:] if matches else None
+
+
+def set_cell_text(tbl: str, row: int, col: int, text: str, char_prs: dict,
+                  regular: Font, boldfont: Font) -> str:
+    """표의 한 칸에 글자만 넣는다. 글꼴·문단모양은 그 칸이 쓰던 것을 그대로 쓴다.
+
+    빈 칸(<hp:run .../> 자기닫힘)과 이미 글자가 있는 칸 모두 다룬다.
+    글자가 바뀌면 그 문단의 줄 배치를 다시 계산한다.
+    """
+    escaped = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    for m in CELL_RE.finditer(tbl):
+        if int(m.group(3)) != col or int(m.group(4)) != row:
+            continue
+        inner = m.group(2)
+        p = re.search(r"<hp:p [^>]*>.*?</hp:p>", inner, re.S)
+        if not p:
+            return tbl
+        para = p.group(0)
+        new_para, n = re.subn(r'<hp:run charPrIDRef="(\d+)"/>',
+                              rf'<hp:run charPrIDRef="\1"><hp:t>{escaped}</hp:t></hp:run>',
+                              para, count=1)
+        if not n:
+            new_para, n = re.subn(r"(<hp:t>)[^<]*(</hp:t>)",
+                                  rf"\g<1>{escaped}\g<2>", para, count=1)
+        if not n:
+            return tbl
+        new_para = relayout_paragraph(new_para, char_prs, regular, boldfont)
+        new_inner = inner.replace(para, new_para, 1)
+        return tbl[: m.start(2)] + new_inner + tbl[m.end(2):]
+    return tbl
+
+
+def append_revision_row(tbl: str) -> str:
+    """마지막 데이터 행을 복제해 빈 행을 하나 늘린다.
+
+    복제 행은 글자만 비우고 서식(칸 구조·음영·테두리)은 그대로 둔다.
+    rowCnt 와 표 높이도 함께 늘린다.
+    """
+    last = max(c.row for c in cells(tbl))
+    m = re.search(rf'<hp:tr>(?:(?!</hp:tr>).)*rowAddr="{last}"(?:(?!</hp:tr>).)*</hp:tr>', tbl, re.S)
+    if not m:
+        return tbl
+    row_xml = m.group(0)
+    new_row = row_xml.replace(f'rowAddr="{last}"', f'rowAddr="{last + 1}"')
+    new_row = re.sub(r'<hp:run charPrIDRef="(\d+)">(?:(?!</hp:run>).)*</hp:run>',
+                     r'<hp:run charPrIDRef="\1"/>', new_row)
+    new_row = re.sub(r"<hp:linesegarray>(<hp:lineseg [^>]*/>)(?:<hp:lineseg [^>]*/>)*</hp:linesegarray>",
+                     r"<hp:linesegarray>\1</hp:linesegarray>", new_row)
+    h_m = re.search(r'<hp:cellSz width="\d+" height="(\d+)"', row_xml)
+    tbl = tbl[: m.end()] + new_row + tbl[m.end():]
+    tbl = re.sub(r'rowCnt="(\d+)"', lambda mm: f'rowCnt="{int(mm.group(1)) + 1}"', tbl, count=1)
+    if h_m:
+        tbl = re.sub(r'(<hp:sz width="\d+" widthRelTo="ABSOLUTE" height=")(\d+)',
+                     lambda mm: mm.group(1) + str(int(mm.group(2)) + int(h_m.group(1))),
+                     tbl, count=1)
+    return tbl

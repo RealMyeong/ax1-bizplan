@@ -1,18 +1,25 @@
 """산출물 HWPX 에 서식 규칙을 적용한다.
 
     python apply_artifact_format.py <입력.hwpx> [-o 출력.hwpx] [--in-place]
+        [--rev-note <개정내역>] [--rev-author <작성자>] [--no-revision]
 
 글꼴·줄간격·표 서식에 더해 제목 문단 서식(위아래 간격·개요 스타일·장 쪽나눔),
 목차 항목(장 굵게 + 절 들여쓰기 2단계, 본문 제목에서 재생성), 리스트 계층
-(단계별 기호 ● - · · 와 내어쓰기)을 기존 문서에 소급 적용한다.
+(기호 • 와 단계별 내어쓰기)을 기존 문서에 소급 적용한다.
 목차 항목을 재생성하면 문단 수가 원본과 달라질 수 있다. 로그에 증감을 남긴다.
 
-표지~목차 불가침 구간은 글자 깨짐 교정만 하고 서식은 건드리지 않는다.
+개정 이력표에는 오늘 날짜와 한 단계 올린 버전(v0.x)을 자동 기입하고, 출력 파일
+이름의 버전 조각도 같은 값으로 맞춘다 (-o 를 생략하면 `<이름>_v0.x.hwpx`).
+같은 날 같은 내역이 이미 기록되어 있으면 다시 쓰지 않는다 (멱등).
+
+표지~목차 불가침 구간은 글자 깨짐 교정과 개정 이력 기입만 하고 서식은 건드리지 않는다.
 적용 후 check_artifact_format.py 로 반드시 재검사한다.
 """
 
 from __future__ import annotations
 
+import argparse
+import datetime
 import math
 import re
 import shutil
@@ -226,10 +233,12 @@ def retrofit_hierarchy(section: str, pool: ParaPrPool, char_prs: dict, styles: d
                        plain_cid, bold_cid, log: list) -> str:
     """제목·목차·리스트 계층을 기존 문서에 소급 적용한다.
 
-    - 제목(15/12/10.5pt 굵게): 위아래 간격, 개요 스타일 태그, 장 쪽나눔
+    - 제목(15/12/10.5pt 굵게): 위아래 간격, 개요 스타일 태그, 장 쪽나눔.
+      장 바로 다음의 절 제목은 위 간격을 줄인다 (H2_AFTER_H1_PREV)
     - 목차 항목: 본문 장·절 제목에서 재생성 (장 굵게, 절 들여쓰기).
       문단 수가 원본과 달라질 수 있으므로 증감을 로그에 남긴다
-    - 리스트: 단계별 기호(● - · ·)와 내어쓰기. 번호 목록도 내어쓰기 적용
+    - 리스트: 기호 • 와 단계별 내어쓰기. 옛 기호(● - ·)는 • 로 바꾼다.
+      번호 목록도 내어쓰기 적용
     """
     width = H.text_width_of(section)
     spans = H.table_spans(section)
@@ -252,12 +261,26 @@ def retrofit_hierarchy(section: str, pool: ParaPrPool, char_prs: dict, styles: d
     first_heading_at = paras[headings[0][0]][0]
     edits = []  # (시작, 끝, 대체 문자열)
 
+    heading_level_at = {i: lv for i, lv, _ in headings}
+
+    def follows_h1(idx: int) -> bool:
+        """빈 문단을 건너뛰고, 바로 앞 글자 있는 문단이 장 제목인지 본다."""
+        for j in range(idx - 1, -1, -1):
+            a, _, _, body = paras[j]
+            if H.in_any_span(spans, a):
+                return False
+            if any(t.strip() for _, t in H.para_visible_runs(body, char_prs)):
+                return heading_level_at.get(j) == 1
+        return False
+
     # 1) 제목 문단
     fixed_headings = 0
     for i, level, _text in headings:
         a, ta, attrs, body = paras[i]
         pid = re.search(r'paraPrIDRef="(\d+)"', attrs).group(1)
         prev_v, next_v = H.HEADING_MARGIN[level]
+        if level == 2 and follows_h1(i):
+            prev_v = H.H2_AFTER_H1_PREV  # 장 바로 다음의 절은 위 간격을 줄인다
         new_pid = pool.variant(pid, pool.spacing_of(pid) or H.BODY_LINE_SPACING, None,
                                margins={"left": 0, "intent": 0, "prev": prev_v, "next": next_v})
         new_attrs = re.sub(r'paraPrIDRef="\d+"', f'paraPrIDRef="{new_pid}"', attrs)
@@ -399,6 +422,56 @@ def retrofit_hierarchy(section: str, pool: ParaPrPool, char_prs: dict, styles: d
     return section
 
 
+def record_revision(section: str, body_start: int, header: str,
+                    regular: H.Font, boldfont: H.Font,
+                    note: str, author: str, log: list) -> tuple:
+    """개정 이력표에 오늘 날짜·한 단계 올린 버전을 기입한다.
+
+    불가침 구간 예외: 내용 기입과 (빈 행이 없을 때의) 행 추가만 하며,
+    서식과 칸 구조는 양식 그대로 둔다. 같은 날 같은 내역이 이미 마지막 행에
+    있으면 다시 쓰지 않아 재적용해도 행이 늘지 않는다.
+
+    (section, 새 버전 문자열 또는 None) 을 돌려준다.
+    """
+    span = H.find_revision_table(section, body_start)
+    if span is None:
+        log.append("[경고] 개정 이력표(개정일자|버전|...)를 찾지 못해 개정 이력을 기록하지 않음")
+        return section, None
+    a, b = span
+    tbl = section[a:b]
+    entries = H.revision_entries(tbl)
+    today = datetime.date.today().isoformat()
+
+    if entries:
+        last = entries[-1][1]
+        last_date = last[0] if last else ""
+        last_ver = last[1] if len(last) > 1 else ""
+        last_note = last[2] if len(last) > 2 else ""
+        if last_date == today and last_note == note:
+            log.append(f"개정 이력: 오늘({today}) 같은 내역이 이미 있어 그대로 둠 ({last_ver})")
+            return section, (last_ver or None)
+        version = H.bump_version(last_ver)
+    else:
+        version = "v0.1"
+
+    row = H.next_revision_row(tbl)
+    added = False
+    if row is None:
+        tbl = H.append_revision_row(tbl)
+        row = max(c.row for c in H.cells(tbl))
+        added = True
+
+    char_prs = H.parse_char_prs(header)
+    for col, val in ((0, today), (1, version), (2, note), (3, author)):
+        if val:
+            tbl = H.set_cell_text(tbl, row, col, val, char_prs, regular, boldfont)
+    section = section[:a] + tbl + section[b:]
+    log.append(f"개정 이력 기록: {today} / {version} / {note!r}"
+               + (f" / 작성자 {author!r}" if author else "")
+               + (" (빈 행이 없어 행 추가)" if added else ""))
+    return section, version
+
+
 def replace_missing_glyphs(text: str, regular: H.Font, log: list, label: str) -> str:
     """맑은 고딕에 없는 문자를 대체 문자로 바꾼다. 불가침 구간에도 적용한다."""
     seen = {}
@@ -490,11 +563,20 @@ def fix_linesegs(xml: str, percent: int) -> str:
     return re.sub(r'(<hp:lineseg [^>]*?vertsize=")(\d+)("[^>]*?spacing=")(-?\d+)(")', fix, xml)
 
 
-def apply(src: Path, dst: Path) -> list:
+def apply(src: Path, dst: Path = None, rev_note: str = "서식 적용",
+          rev_author: str = "", revision: bool = True) -> list:
+    """dst 가 None 이면 개정 버전에 맞춰 `<이름>_v0.x.hwpx` 로 저장한다."""
     log = []
     entries = H.read_hwpx(src)
     header = H.get_text(entries, H.HEADER)
     section = H.get_text(entries, H.SECTION)
+
+    def out_path(version=None) -> Path:
+        if dst is not None:
+            return dst
+        if version:
+            return H.versioned_name(src, version)
+        return src.with_name(src.stem + "_fmt" + src.suffix)
 
     regular = H.Font(H.MALGUN)
     boldfont = H.Font(H.MALGUN_BOLD)
@@ -518,11 +600,21 @@ def apply(src: Path, dst: Path) -> list:
     body_start = H.body_start_offset(section)
     if body_start is None:
         log.append("[중단] 목차 문단을 찾지 못했다. 본문 시작 위치를 확인받기 전에는 서식을 바꾸지 않는다")
+        final = out_path()
         H.set_text(entries, H.HEADER, header)
         H.set_text(entries, H.SECTION, section)
-        H.write_hwpx(entries, dst)
+        H.write_hwpx(entries, final)
+        log.append(f"저장: {final}")
         return log
-    log.append(f"불가침 구간: 문서 시작 ~ 오프셋 {body_start} (표지·문서정보·개정이력·목차) 는 양식 그대로 둠")
+    log.append(f"불가침 구간: 문서 시작 ~ 오프셋 {body_start} (표지·문서정보·개정이력·목차) 는 양식 그대로 둠"
+               " (예외: 글자 깨짐 교정과 개정 이력 기입)")
+
+    # 3-1. 개정 이력 - 오늘 날짜와 한 단계 올린 버전을 기입한다
+    new_version = None
+    if revision:
+        section, new_version = record_revision(section, body_start, header,
+                                               regular, boldfont, rev_note, rev_author, log)
+        body_start = H.body_start_offset(section)  # 기입으로 오프셋이 밀렸을 수 있다
 
     # 4. 본문 표 머리행 배경색 - 표지가 쓰는 정의는 건드리지 않는다
     front_fills = H.front_matter_fill_ids(section, body_start)
@@ -640,34 +732,54 @@ def apply(src: Path, dst: Path) -> list:
     out.append(fix_linesegs(section[cursor:], H.BODY_LINE_SPACING))
     section = "".join(out)
 
+    final = out_path(new_version)
+    if dst is None and final.resolve() == src.resolve():
+        # 버전이 오르지 않아 이름이 그대로면 원본 덮어쓰기가 된다. 백업을 먼저 만든다
+        backup = src.with_suffix(src.suffix + ".bak")
+        shutil.copy2(src, backup)
+        log.append(f"출력 이름이 원본과 같아 백업을 먼저 만듦: {backup}")
+    if new_version:
+        name_ver = H.name_version_of(final)
+        if name_ver is None:
+            log.append(f"[경고] 파일 이름에 버전 조각이 없음. 규칙은 개정 이력과 같은 _{new_version} 을 붙이는 것")
+        elif name_ver.lower() != new_version.lower():
+            log.append(f"[경고] 파일 이름 버전({name_ver})이 개정 이력({new_version})과 다름. 규칙은 동일하게 맞추는 것")
     H.set_text(entries, H.HEADER, pool.finish())
     H.set_text(entries, H.SECTION, section)
-    H.write_hwpx(entries, dst)
-    log.append(f"저장: {dst}")
+    H.write_hwpx(entries, final)
+    log.append(f"저장: {final}")
     return log
 
 
 def main() -> int:
-    args = [a for a in sys.argv[1:] if not a.startswith("-")]
-    if not args:
-        print(__doc__)
-        return 2
-    src = Path(args[0])
+    ap = argparse.ArgumentParser(
+        description="산출물 HWPX 에 서식 규칙을 적용하고 개정 이력·파일명 버전을 올린다")
+    ap.add_argument("input", type=Path, help="입력 .hwpx")
+    ap.add_argument("-o", "--out", type=Path, default=None,
+                    help="출력 파일. 생략하면 개정 버전에 맞춰 <이름>_v0.x.hwpx 로 저장")
+    ap.add_argument("--in-place", action="store_true",
+                    help="원본에 덮어쓰기 (.bak 백업을 먼저 만든다). 파일명 버전은 바뀌지 않으므로 경고가 남는다")
+    ap.add_argument("--rev-note", default="서식 적용", help="개정 이력의 개정내역 칸 (기본: 서식 적용)")
+    ap.add_argument("--rev-author", default="", help="개정 이력의 작성자 칸")
+    ap.add_argument("--no-revision", action="store_true",
+                    help="개정 이력·파일명 버전을 건드리지 않음 (출력 기본 이름은 <이름>_fmt.hwpx)")
+    args = ap.parse_args()
+
+    src = args.input
     if not src.is_file():
         print(f"파일 없음: {src}")
         return 2
 
-    if "--in-place" in sys.argv:
+    dst = None
+    if args.in_place:
         backup = src.with_suffix(src.suffix + ".bak")
         shutil.copy2(src, backup)
         print(f"원본 백업: {backup}")
         dst = src
-    elif "-o" in sys.argv:
-        dst = Path(sys.argv[sys.argv.index("-o") + 1])
-    else:
-        dst = src.with_name(src.stem + "_fmt" + src.suffix)
+    elif args.out:
+        dst = args.out
 
-    for line in apply(src, dst):
+    for line in apply(src, dst, args.rev_note, args.rev_author, not args.no_revision):
         print(line)
     print("\n적용이 끝나면 check_artifact_format.py 로 반드시 재검사할 것")
     return 0

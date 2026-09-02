@@ -56,10 +56,31 @@ def check(path: Path) -> list:
             )
 
     # 0. 불가침 구간 경계
+    has_front = body_start is not None
     if body_start is None:
         add("불가침 구간", "목차 문단을 찾지 못해 본문 시작 위치를 판정할 수 없음. 사용자 확인 필요")
         body_start = 0
     front_fills = H.front_matter_fill_ids(section, body_start)
+
+    # 0-2. 개정 이력과 파일명 버전 - 최신 버전이 기록되어 있고 파일 이름과 같아야 한다
+    if has_front:
+        rev_span = H.find_revision_table(section, body_start)
+        if rev_span is None:
+            add("개정 이력", "개정 이력표(개정일자 | 버전 | ...)를 찾지 못함")
+        else:
+            rev_entries = H.revision_entries(section[rev_span[0]:rev_span[1]])
+            if not rev_entries:
+                add("개정 이력", "개정 이력이 비어 있음. 오늘 날짜와 v0.1 로 첫 행을 기록해야 함")
+            else:
+                last = rev_entries[-1][1]
+                ver = last[1] if len(last) > 1 else ""
+                if not H.re.fullmatch(r"v\d+\.\d+", ver):
+                    add("개정 이력", f"버전 표기가 기본 형식(v0.x)이 아님: {ver!r}", f"행 {rev_entries[-1][0]}")
+                name_ver = H.name_version_of(path)
+                if name_ver is None:
+                    add("파일명 버전", f"파일 이름에 버전 조각이 없음 (개정 이력 최신 버전 {ver})")
+                elif ver and name_ver.lower() != ver.lower():
+                    add("파일명 버전", f"파일 이름 버전({name_ver})이 개정 이력 최신 버전({ver})과 다름")
 
     # 1. 글꼴 - 문서 전체
     if not malgun_ids:
@@ -162,17 +183,25 @@ def check(path: Path) -> list:
     styles = H.style_ids_by_name(header)
     all_paras = H.paragraphs(section)
     headings = []
+    follows_h1 = {}  # 제목 오프셋 -> 직전 글자 있는 문단(빈 문단 제외)이 장 제목인가
+    prev_level = None
     for off, attrs, body in all_paras:
         if off < body_start or H.in_any_span(spans, off):
             continue
+        if not any(t.strip() for _, t in H.para_visible_runs(body, char_prs)):
+            continue
         level = H.heading_level_of(body, char_prs)
         if level:
+            follows_h1[off] = prev_level == 1
             headings.append((off, attrs, level, "".join(t for _, t in H.para_visible_runs(body, char_prs))))
+        prev_level = level
 
     for off, attrs, level, text in headings:
         pid_m = H.re.search(r'paraPrIDRef="(\d+)"', attrs)
         pp = para_prs.get(pid_m.group(1), {}) if pid_m else {}
         want_prev, want_next = H.HEADING_MARGIN[level]
+        if level == 2 and follows_h1.get(off):
+            want_prev = H.H2_AFTER_H1_PREV  # 장 바로 다음의 절은 위 간격을 줄인다
         if (pp.get("prev"), pp.get("next")) != (want_prev, want_next):
             add(
                 "제목 간격",

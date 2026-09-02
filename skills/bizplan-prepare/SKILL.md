@@ -2,9 +2,9 @@
 name: bizplan-prepare
 description: 프로젝트 최상위 폴더만 준비된 상태에서 국가 R&D·공모 사업계획서 작성에 필요한 표준 하위폴더, 준비현황 체크리스트, 최신 산출물 연동현황과 이전버전 보관함을 구축한다. 사용자가 `사업계획서 작성 준비`, `계획서 폴더 구성`, `RFP 작업공간 준비`처럼 요청할 때 사용한다. 기존 자료의 이동·삭제·덮어쓰기 없이 멱등하게 작업공간을 준비하며 실제 계획서 초안 작성에는 사용하지 않는다.
 metadata:
-  version: "0.2.1"
+  version: "0.2.2"
   architecture: "safe-idempotent-workspace-scaffold"
-  updated: "2026-08-31"
+  updated: "2026-09-02"
 ---
 
 # 목적

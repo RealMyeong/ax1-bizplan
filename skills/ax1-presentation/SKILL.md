@@ -2,7 +2,7 @@
 name: ax1-presentation
 description: AX1 팀의 보고·제안·사업 발표자료를 만들거나 수정한다. 목적·청중·발표시간과 기준자료를 확인하고, 스토리보드·시각 방향·샘플을 사용자와 단계적으로 확정한 뒤 편집 가능한 네이티브 PPTX 또는 전체 슬라이드 이미지형 PPTX를 생성·검증한다. 사업계획서 본문 초안은 bizplan-draft, 제출 직전 사업계획서 점검은 bizplan-preflight를 사용한다.
 metadata:
-  version: "0.1.0"
+  version: "0.1.1"
   architecture: "staged-storyboard-dual-render-presentation"
   updated: "2026-09-02"
 ---

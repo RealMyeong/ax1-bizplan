@@ -2,9 +2,9 @@
 name: bizplan-revise
 description: 기존 사업계획서와 평가·검토의견을 함께 받아 실제 요구를 분해하고, 양식과 문체를 보존한 수정본과 검토의견 반영 대장을 만든다. 특정 의견 반영, 최소 범위 수정, 관련 표·목표·연차·역할의 전역 동기화가 필요할 때 사용한다. 최초 초안 작성이나 검토만 요청된 경우에는 사용하지 않는다.
 metadata:
-  version: "0.5.1"
+  version: "0.5.2"
   architecture: "generic-core-plus-project-profile"
-  updated: "2026-08-31"
+  updated: "2026-09-02"
 ---
 
 # 목적

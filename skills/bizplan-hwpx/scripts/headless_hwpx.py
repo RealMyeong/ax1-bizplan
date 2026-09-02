@@ -8,10 +8,12 @@
 from __future__ import annotations
 
 import math
+import datetime
 import hashlib
 import json
 import os
 import re
+import shutil
 import struct
 import tempfile
 import unicodedata
@@ -47,6 +49,18 @@ HANGUL_RANGES = (
     (0xFFA0, 0xFFDC),
 )
 
+REVISION_HEADERS = ("개정일자", "버전", "개정내역", "작성자", "확인자")
+DOCUMENT_INFO_HEADERS = ("구분", "소속", "성명", "날짜", "서명")
+ARTIFACT_VERSION_PATTERN = r"v(?:0|[1-9]\d{0,8})(?:\.(?:0|[1-9]\d{0,8}))+"
+MAX_ARTIFACT_VERSION_LENGTH = 64
+MAX_REVISION_TABLE_ROWS = 1000
+ARTIFACT_VERSION_RE = re.compile(rf"^{ARTIFACT_VERSION_PATTERN}$")
+ARTIFACT_FILENAME_VERSION_RE = re.compile(
+    rf"(?<![0-9A-Za-z])({ARTIFACT_VERSION_PATTERN})(?![0-9A-Za-z.])",
+    re.IGNORECASE,
+)
+KST = datetime.timezone(datetime.timedelta(hours=9))
+
 SECTION = "Contents/section0.xml"
 HEADER = "Contents/header.xml"
 PREVIEW = "Preview/PrvText.txt"
@@ -64,6 +78,117 @@ def sha256_file(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def validate_artifact_version(value: str) -> str:
+    """관리 산출물 버전을 엄격한 ``v숫자.숫자...`` 형식으로 확인한다."""
+    if (
+        not isinstance(value, str)
+        or len(value) > MAX_ARTIFACT_VERSION_LENGTH
+        or not ARTIFACT_VERSION_RE.fullmatch(value)
+    ):
+        raise HeadlessHwpxError(
+            f"산출물 버전 형식이 올바르지 않음: {value!r}; v0.1 같은 형식을 사용할 것"
+        )
+    return value
+
+
+def version_parts(value: str) -> tuple[int, ...]:
+    validate_artifact_version(value)
+    return tuple(int(part) for part in value[1:].split("."))
+
+
+def compare_versions(left: str, right: str) -> int:
+    """숫자 성분을 비교한다. ``v1.0``과 ``v1.0.0``은 같은 값으로 본다."""
+    a, b = version_parts(left), version_parts(right)
+    width = max(len(a), len(b))
+    a += (0,) * (width - len(a))
+    b += (0,) * (width - len(b))
+    return (a > b) - (a < b)
+
+
+def normalize_revision_date(value: str | None = None) -> str:
+    """명시 날짜를 검증하거나 Asia/Seoul 기준 오늘 날짜를 반환한다."""
+    candidate = value if value is not None else datetime.datetime.now(KST).date().isoformat()
+    if not isinstance(candidate, str):
+        raise HeadlessHwpxError("개정일자는 YYYY-MM-DD 문자열이어야 함")
+    try:
+        parsed = datetime.date.fromisoformat(candidate)
+    except ValueError as exc:
+        raise HeadlessHwpxError(f"개정일자 형식이 올바르지 않음: {candidate!r}; YYYY-MM-DD를 사용할 것") from exc
+    if parsed.isoformat() != candidate:
+        raise HeadlessHwpxError(f"개정일자 형식이 올바르지 않음: {candidate!r}; YYYY-MM-DD를 사용할 것")
+    return candidate
+
+
+def artifact_filename_versions(path: Path) -> list[str]:
+    """파일명에 보이는 버전 유사 토큰을 순서대로 반환한다."""
+    return [match.group(1) for match in ARTIFACT_FILENAME_VERSION_RE.finditer(Path(path).stem)]
+
+
+def artifact_filename_issues(path: Path, expected_version: str | None = None) -> list[str]:
+    """끝의 단일 ``_v<버전>.hwpx`` 규칙 위반을 설명한다."""
+    path = Path(path)
+    issues: list[str] = []
+    if path.suffix.lower() != ".hwpx":
+        issues.append("확장자가 .hwpx가 아님")
+    versions = artifact_filename_versions(path)
+    if len(versions) != 1:
+        issues.append(f"파일명 버전 토큰이 단일하지 않음: {versions!r}")
+        return issues
+    version = versions[0]
+    try:
+        validate_artifact_version(version)
+    except HeadlessHwpxError:
+        issues.append(f"파일명 버전 형식이 올바르지 않음: {version!r}")
+        return issues
+    if not path.stem.endswith("_" + version):
+        issues.append(f"파일명이 단일 끝 접미사 _{version}.hwpx로 끝나지 않음")
+    if expected_version is not None and version != expected_version:
+        issues.append(f"파일명 버전({version})과 개정 이력 버전({expected_version})이 다름")
+    return issues
+
+
+def require_new_artifact_output(path: Path, version: str) -> Path:
+    """출력 이름과 미존재 조건을 쓰기 전에 검증한다."""
+    path = Path(path)
+    version = validate_artifact_version(version)
+    issues = artifact_filename_issues(path, version)
+    if issues:
+        raise HeadlessHwpxError("출력 파일명 규칙 위반: " + "; ".join(issues))
+    if os.path.lexists(path):
+        raise HeadlessHwpxError(f"출력 대상이 이미 존재해 덮어쓸 수 없음: {path}")
+    return path
+
+
+def publish_new_file(source: Path, target: Path) -> None:
+    """검증된 임시 파일을 기존 대상을 덮어쓰지 않고 게시한다."""
+    source, target = Path(source), Path(target)
+    if os.path.lexists(target):
+        raise HeadlessHwpxError(f"출력 대상이 이미 존재해 덮어쓸 수 없음: {target}")
+    created = False
+    try:
+        try:
+            os.link(source, target)
+            created = True
+        except FileExistsError as exc:
+            raise HeadlessHwpxError(f"출력 대상이 이미 존재해 덮어쓸 수 없음: {target}") from exc
+        except OSError:
+            # 하드링크를 지원하지 않는 파일시스템에서는 O_EXCL로 새 파일만 만든다.
+            try:
+                descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
+            except FileExistsError as exc:
+                raise HeadlessHwpxError(f"출력 대상이 이미 존재해 덮어쓸 수 없음: {target}") from exc
+            created = True
+            with os.fdopen(descriptor, "wb") as output, source.open("rb") as input_file:
+                shutil.copyfileobj(input_file, output, length=1024 * 1024)
+                output.flush()
+                os.fsync(output.fileno())
+        read_hwpx(target)
+    except BaseException:
+        if created:
+            target.unlink(missing_ok=True)
+        raise
 
 
 def is_hangul_codepoint(codepoint: int) -> bool:
@@ -606,6 +731,238 @@ def cells(table_xml: str) -> list:
             )
         )
     return out
+
+
+@dataclass(frozen=True)
+class RevisionRecord:
+    row: int
+    date: str
+    version: str
+    note: str
+    author: str
+    confirmer: str
+
+
+@dataclass
+class RevisionTableAnalysis:
+    issues: list[str]
+    records: list[RevisionRecord]
+    empty_rows: list[int]
+
+
+def cell_text(cell: Cell) -> str:
+    """셀의 표시 문자열을 run 순서대로 합친다."""
+    return " ".join(text for _, text in cell.runs()).strip()
+
+
+def table_header_values(table_xml: str) -> tuple[str, ...]:
+    """첫 행의 열별 표시 문자열. 중복·누락 열은 빈 튜플로 돌려준다."""
+    head = [cell for cell in cells(table_xml) if cell.row == 0]
+    columns = [cell.col for cell in head]
+    if len(columns) != len(set(columns)) or sorted(columns) != list(range(len(columns))):
+        return ()
+    return tuple(cell_text(cell) for cell in sorted(head, key=lambda item: item.col))
+
+
+def ax1_front_matter_signature(section: str, body_start: int | None) -> bool:
+    """현재 승인 AX1 템플릿의 불가침 표지 구조인지 보수적으로 판정한다."""
+    if body_start is None:
+        return False
+    front = section[:body_start]
+    labels = {
+        re.sub(r"\s+", "", unescape(value)).strip()
+        for value in re.findall(r"<hp:t>([^<]*)</hp:t>", front)
+    }
+    if not {"문서정보", "목차"}.issubset(labels):
+        return False
+    return any(
+        table_header_values(front[start:end]) == DOCUMENT_INFO_HEADERS
+        for start, end in table_spans(front)
+    )
+
+
+def revision_table_spans(section: str, body_start: int | None) -> list[tuple[int, int]]:
+    """불가침 구간에서 정확한 AX1 개정표 헤더를 가진 표를 찾는다."""
+    if body_start is None:
+        return []
+    return [
+        (start, end)
+        for start, end in table_spans(section)
+        if start < body_start and table_header_values(section[start:end]) == REVISION_HEADERS
+    ]
+
+
+def analyze_revision_table(
+    table_xml: str,
+    *,
+    require_record: bool,
+    require_empty_row: bool,
+) -> RevisionTableAnalysis:
+    """개정표의 구조·완전성·버전 유일성과 단조 증가를 검사한다."""
+    issues: list[str] = []
+    records: list[RevisionRecord] = []
+    empty_rows: list[int] = []
+    if table_header_values(table_xml) != REVISION_HEADERS:
+        issues.append("헤더가 개정일자|버전|개정내역|작성자|확인자와 정확히 일치하지 않음")
+
+    row_count_match = re.search(r'<hp:tbl [^>]*rowCnt="(\d+)"', table_xml)
+    if not row_count_match:
+        issues.append("표 rowCnt를 찾을 수 없음")
+        return RevisionTableAnalysis(issues, records, empty_rows)
+    row_count_text = row_count_match.group(1)
+    if len(row_count_text) > 4 or (len(row_count_text) > 1 and row_count_text.startswith("0")):
+        issues.append(f"표 rowCnt가 안전 범위를 벗어남: {row_count_text[:32]!r}")
+        return RevisionTableAnalysis(issues, records, empty_rows)
+    row_count = int(row_count_text)
+    if row_count > MAX_REVISION_TABLE_ROWS:
+        issues.append(f"표 rowCnt가 지원 상한 {MAX_REVISION_TABLE_ROWS}을 초과함: {row_count}")
+        return RevisionTableAnalysis(issues, records, empty_rows)
+    column_count_match = re.search(r'<hp:tbl [^>]*colCnt="(\d+)"', table_xml)
+    if not column_count_match or column_count_match.group(1) != "5":
+        actual = column_count_match.group(1) if column_count_match else "없음"
+        issues.append(f"표 colCnt가 5가 아님: {actual}")
+        return RevisionTableAnalysis(issues, records, empty_rows)
+    actual_row_tags = len(re.findall(r"<hp:tr(?:\s[^>]*)?>", table_xml))
+    if actual_row_tags != row_count:
+        issues.append(f"표 rowCnt({row_count})와 실제 hp:tr 수({actual_row_tags})가 다름")
+        return RevisionTableAnalysis(issues, records, empty_rows)
+    if row_count < 2:
+        issues.append("개정 기록용 데이터 행이 없음")
+        return RevisionTableAnalysis(issues, records, empty_rows)
+
+    all_cells = cells(table_xml)
+    actual_row_addresses = {cell.row for cell in all_cells}
+    expected_row_addresses = set(range(row_count))
+    if actual_row_addresses != expected_row_addresses:
+        issues.append(
+            "표 rowCnt 범위와 셀 행 주소가 다름: "
+            f"expected={sorted(expected_row_addresses)}, actual={sorted(actual_row_addresses)}"
+        )
+    saw_empty = False
+    versions: list[str] = []
+    for row in range(1, row_count):
+        row_cells = [cell for cell in all_cells if cell.row == row]
+        columns = [cell.col for cell in row_cells]
+        if len(row_cells) != 5 or sorted(columns) != list(range(5)) or len(columns) != len(set(columns)):
+            issues.append(f"행 {row}: 5개 열 구조가 아님")
+            continue
+        if any(cell.colspan != 1 or cell.rowspan != 1 for cell in row_cells):
+            issues.append(f"행 {row}: 병합 셀이 있어 경량 개정 기록을 지원하지 않음")
+        values = [cell_text(cell) for cell in sorted(row_cells, key=lambda item: item.col)]
+        if not any(values):
+            saw_empty = True
+            empty_rows.append(row)
+            continue
+
+        date_value, version, note, author, confirmer = values
+        if saw_empty:
+            issues.append(f"행 {row}: 빈 행 뒤에 개정 기록이 있어 순서가 연속되지 않음")
+        if not date_value or not version or not note:
+            issues.append(f"행 {row}: 개정일자·버전·개정내역 중 빈 필드가 있음")
+        if confirmer and not author:
+            issues.append(f"행 {row}: 작성자 없이 확인자만 기록되어 있음")
+        if date_value:
+            try:
+                if datetime.date.fromisoformat(date_value).isoformat() != date_value:
+                    raise ValueError(date_value)
+            except ValueError:
+                issues.append(f"행 {row}: 개정일자가 YYYY-MM-DD 형식이 아님: {date_value!r}")
+        if version:
+            try:
+                validate_artifact_version(version)
+            except HeadlessHwpxError:
+                issues.append(f"행 {row}: 버전 형식이 올바르지 않음: {version!r}")
+            else:
+                if any(compare_versions(previous, version) == 0 for previous in versions):
+                    issues.append(f"행 {row}: 중복 버전임: {version}")
+                if versions and compare_versions(versions[-1], version) >= 0:
+                    issues.append(f"행 {row}: 버전이 앞 행보다 커지지 않음: {versions[-1]} -> {version}")
+                versions.append(version)
+        records.append(RevisionRecord(row, date_value, version, note, author, confirmer))
+
+    if require_record and not records:
+        issues.append("첫 개정 기록이 없음")
+    if records and records[0].row != 1:
+        issues.append("첫 개정 기록이 데이터 첫 행에 있지 않음")
+    if require_empty_row and not empty_rows:
+        issues.append("개정 이력의 빈 행이 없어 새 기록을 안전하게 추가할 수 없음")
+    return RevisionTableAnalysis(issues, records, empty_rows)
+
+
+def escape_xml_text(value: str) -> str:
+    """XML 문법 문자만 이스케이프하고 한글·백슬래시는 실제 문자로 둔다."""
+    return (
+        value.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
+
+
+def set_revision_cell_text(
+    table_xml: str,
+    row: int,
+    col: int,
+    value: str,
+    *,
+    require_empty: bool = True,
+    paragraph_transform=None,
+) -> str:
+    """개정표 한 셀의 첫 문단에 callback 기반으로 안전하게 실제 문자를 기록한다."""
+    matches = [
+        match
+        for match in CELL_RE.finditer(table_xml)
+        if int(match.group(3)) == col and int(match.group(4)) == row
+    ]
+    if len(matches) != 1:
+        raise HeadlessHwpxError(f"개정 이력 셀을 하나로 식별할 수 없음: r{row}c{col}")
+    match = matches[0]
+    target_cell = next(
+        cell for cell in cells(match.group(0)) if cell.row == row and cell.col == col
+    )
+    if require_empty and cell_text(target_cell):
+        raise HeadlessHwpxError(f"비어 있지 않은 개정 이력 셀을 덮어쓸 수 없음: r{row}c{col}")
+
+    inner = match.group(2)
+    paragraph = re.search(r"<hp:p [^>]*>.*?</hp:p>", inner, re.S)
+    if not paragraph:
+        raise HeadlessHwpxError(f"개정 이력 셀의 문단을 찾을 수 없음: r{row}c{col}")
+    para_xml = paragraph.group(0)
+    escaped = escape_xml_text(value)
+
+    new_para, changed = re.subn(
+        r'<hp:run (?P<attrs>[^>]*charPrIDRef="\d+"[^>]*)/>',
+        lambda found: f'<hp:run {found.group("attrs")}><hp:t>{escaped}</hp:t></hp:run>',
+        para_xml,
+        count=1,
+    )
+    if not changed:
+        def replace_run(found):
+            run = found.group(0)
+            if "<hp:t/>" in run:
+                return run.replace("<hp:t/>", f"<hp:t>{escaped}</hp:t>", 1)
+            if re.search(r"<hp:t>.*?</hp:t>", run, re.S):
+                return re.sub(
+                    r"(<hp:t>).*?(</hp:t>)",
+                    lambda text_match: text_match.group(1) + escaped + text_match.group(2),
+                    run,
+                    count=1,
+                    flags=re.S,
+                )
+            return run.replace("</hp:run>", f"<hp:t>{escaped}</hp:t></hp:run>", 1)
+
+        new_para, changed = re.subn(
+            r'<hp:run [^>]*charPrIDRef="\d+"[^>]*>.*?</hp:run>',
+            replace_run,
+            para_xml,
+            count=1,
+            flags=re.S,
+        )
+    if changed != 1:
+        raise HeadlessHwpxError(f"개정 이력 셀에 문자를 기록할 수 없음: r{row}c{col}")
+    if paragraph_transform is not None:
+        new_para = paragraph_transform(new_para)
+    new_inner = inner[: paragraph.start()] + new_para + inner[paragraph.end() :]
+    return table_xml[: match.start(2)] + new_inner + table_xml[match.end(2) :]
 
 
 def is_label_column_table(table_xml: str, fill_ids: set) -> bool:

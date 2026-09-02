@@ -10,11 +10,23 @@ python <스킬>/scripts/build_headless_artifact.py `
   --project-number "과제번호" `
   --project "세부 사업명" `
   --title "산출물 제목" `
-  --document-type "사업계획서" `
-  -o "산출물_AX1_v01.hwpx"
+  --document-type "요구사항정의서" `
+  --artifact-version "v0.1" `
+  --revision-note "최초 작성" `
+  --revision-author "작성자" `
+  -o "산출물_AX1_v0.1.hwpx"
 ```
 
 별도 `--template`은 받지 않는다. 포함된 승인 템플릿만 사용한다.
+
+## 개정 이력과 파일명 버전
+
+- `--artifact-version`은 프로젝트의 현재본·외부 `산출물_버전이력.md`와 대조해 확정한 값을 사용한다. 생성기가 마지막 행만 보고 다음 버전을 추정하지 않는다.
+- 출력 파일명은 끝에 버전 접미사 하나만 두고 개정 이력 버전과 정확히 같게 한다. 예: `요구사항정의서_v0.1.hwpx`.
+- `--revision-note`의 한글은 실제 UTF-8 문자로 기록하고, 작성자가 확정된 경우에만 `--revision-author`를 같은 방식으로 입력한다. 확인자 칸은 자동 입력하지 않는다.
+- 개정 이력표가 없거나 빈 행이 없고, 기존 행이 부분 입력·중복·역순이거나 파일명이 불일치·복수 버전 토큰이면 파일을 쓰기 전에 중단한다.
+- 기존 출력 경로가 있으면 덮어쓰거나 삭제하지 않는다. 다른 새 버전 경로를 확정한 뒤 다시 실행한다.
+- 경량 생성 후보를 검증한 뒤에만 같은 버전의 PDF·프리뷰·readback과 함께 승격하고 외부 버전 이력을 갱신한다.
 
 ## 한글 입력 보존
 
@@ -47,8 +59,9 @@ python <스킬>/scripts/build_headless_artifact.py `
 1. `check_headless_artifact.py` 재검사
 2. 확정 한글과 HWPX 내부 XML·readback의 실제 문자 일치 검사
 3. 제목 수준과 본문 목록의 앞 공백 0·3·5·7·9개, 탭·특수 공백과 문단 왼쪽·첫 줄 들여쓰기 중복 부재 검사
-4. upstream `hwpx`의 구조·open-safety·readback 검증
-5. `render_preview` 검토
-6. 제출 후보라면 Windows 한컴에서 전체 페이지 관찰
+4. 개정 이력의 최신 버전·개정일자·개정내역·작성자 입력 여부와 출력 파일명 버전 일치 검사
+5. upstream `hwpx`의 구조·open-safety·readback 검증
+6. `render_preview` 검토
+7. 제출 후보라면 Windows 한컴에서 전체 페이지 관찰
 
 경량 생성 성공은 `structure_verified` 이전의 자동 생성 성공일 뿐이며, 한컴 시각 검증이나 제출 준비 완료를 뜻하지 않는다.

@@ -327,6 +327,54 @@ def validate_confirmation_gate() -> None:
             raise ValueError(f"{skill_name}: explicit subsequent-turn confirmation is missing")
 
 
+def validate_hwpx_document_routing() -> None:
+    skill_text = (SKILLS_ROOT / "bizplan-hwpx" / "SKILL.md").read_text(encoding="utf-8")
+    routing_text = (
+        SKILLS_ROOT / "bizplan-hwpx" / "references" / "12-document-routing.md"
+    ).read_text(encoding="utf-8")
+    for token in (
+        "문서 목적",
+        "사업계획서 작성",
+        "일반 산출물 작성",
+        "요청이 명확하면",
+        "요청이 모호하면",
+        "입력자료 이름보다 사용자가 요청한 최종 산출물을 우선",
+        "상세 분기 규칙은 최초 동의 뒤",
+    ):
+        if token not in skill_text:
+            raise ValueError(f"bizplan-hwpx: document-purpose gate is missing: {token}")
+    required_concepts = {
+        "target artifact priority": (
+            ("입력자료 이름보다", "최종 산출물을 우선해 정한다"),
+        ),
+        "official business form": (
+            ("공고·RFP·제출기관 공식 양식",),
+            ("공고기관이 제공한 공식 양식",),
+        ),
+        "approved AX1 template": (
+            ("승인 AX1 템플릿",),
+            ("승인 AX1 산출물 템플릿",),
+        ),
+        "customer form override": (
+            ("계약·고객 필수 양식",),
+            ("계약·고객 양식",),
+        ),
+        "no pre-confirmation file read": (
+            ("파일명이나 첨부 내용", "사용자 동의 전에", "먼저 열지 않고"),
+        ),
+        "no duplicate confirmation": (("같은 확인을 반복하지 않는다",),),
+        "complete ambiguous-route summary": (
+            ("예상 입력·범위와 제외·산출물·가정과 위험",),
+        ),
+    }
+    for concept, alternative_groups in required_concepts.items():
+        if not any(
+            all(token in routing_text for token in required_tokens)
+            for required_tokens in alternative_groups
+        ):
+            raise ValueError(f"bizplan-hwpx: document routing concept is missing: {concept}")
+
+
 def validate_installation_guides() -> None:
     for relative in INSTALLATION_GUIDES:
         path = ROOT / relative
@@ -568,6 +616,7 @@ def validate_skills() -> dict[str, str]:
         validate_openai_yaml(skill)
         validate_references(skill)
     validate_confirmation_gate()
+    validate_hwpx_document_routing()
     validate_installation_guides()
     validate_improvement_workflow()
     validate_contributor_policy()
@@ -632,7 +681,7 @@ def validate_packaged_hwpx_skill(version: str) -> None:
             if hashlib.sha256(packaged_template.read_bytes()).hexdigest() != packaged_manifest["sha256"]:
                 raise ValueError("individual HWPX skill ZIP template SHA-256 mismatch")
             content = root / "general-deliverable.md"
-            output = root / "general-deliverable.hwpx"
+            output = root / "general-deliverable_v0.1.hwpx"
             content.write_text(
                 "# 1. 데이터 수집 정의서\n\n"
                 "## 1.1 목적\n\n"
@@ -652,6 +701,10 @@ def validate_packaged_hwpx_skill(version: str) -> None:
                     "--project", "테스트 프로젝트",
                     "--title", "데이터 수집 정의서",
                     "--document-type", "정의서",
+                    "--artifact-version", "v0.1",
+                    "--revision-note", "최초 작성",
+                    "--revision-author", "테스트 작성자",
+                    "--revision-date", "2026-09-02",
                     "-o", str(output),
                 ],
                 cwd=root,
@@ -681,6 +734,10 @@ def validate_packaged_hwpx_skill(version: str) -> None:
             for token in (
                 "데이터 수집 정의서",
                 "정의서",
+                "2026-09-02",
+                "v0.1",
+                "최초 작성",
+                "테스트 작성자",
                 "       1.1.1.1 검증 기준",
                 "         • ☑ 한글 산출물 검증",
             ):

@@ -5,6 +5,9 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import os
+import re
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -34,6 +37,32 @@ B = load("build_headless_artifact", SCRIPT_DIR / "build_headless_artifact.py")
 
 def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def revision_table(section: str) -> tuple[int, int, str]:
+    body_start = H.body_start_offset(section)
+    spans = H.revision_table_spans(section, body_start)
+    if len(spans) != 1:
+        raise AssertionError(f"개정 이력표 식별 실패: {len(spans)}개")
+    start, end = spans[0]
+    return start, end, section[start:end]
+
+
+def write_revision_variant(source: Path, target: Path, rows: dict[int, tuple[str, str, str, str]]) -> None:
+    entries = H.read_hwpx(source)
+    section = H.get_text(entries, H.SECTION)
+    start, end, table = revision_table(section)
+    for row, values in sorted(rows.items()):
+        for column, value in enumerate(values):
+            if value:
+                table = H.set_revision_cell_text(table, row, column, value, require_empty=True)
+    H.set_text(entries, H.SECTION, section[:start] + table + section[end:])
+    H.write_hwpx(entries, target)
+
+
+def require_issue(issues: list[dict], rule: str, contains: str) -> None:
+    if not any(issue["rule"] == rule and contains in issue["detail"] for issue in issues):
+        raise AssertionError(f"예상 위반을 찾지 못함: {rule} / {contains}: {issues!r}")
 
 
 def main() -> int:
@@ -74,14 +103,26 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="ax1-headless-test-") as temp_dir:
         temp = Path(temp_dir)
         content = temp / "content.md"
-        output = temp / "output.hwpx"
-        output2 = temp / "output-second.hwpx"
+        output = temp / "output_v0.1.hwpx"
+        output2 = temp / "output-second_v0.1.hwpx"
         unsupported = temp / "unsupported.hwpx"
-        escaped_hangul = temp / "escaped-hangul.hwpx"
-        bad_outline = temp / "bad-outline.hwpx"
-        bad_outline_h4 = temp / "bad-outline-h4.hwpx"
+        escaped_hangul = temp / "escaped-hangul_v0.1.hwpx"
+        bad_outline = temp / "bad-outline_v0.1.hwpx"
+        bad_outline_h4 = temp / "bad-outline-h4_v0.1.hwpx"
         content.write_text(markdown, encoding="utf-8")
-        B.build(template, content, output, cover)
+        revision_note = "한글 개정내역: C:\\검증\\원본\\1"
+        revision_author = "테스트 작성자"
+        revision_date = "2026-09-02"
+        B.build(
+            template,
+            content,
+            output,
+            cover,
+            artifact_version="v0.1",
+            revision_note=revision_note,
+            revision_author=revision_author,
+            revision_date=revision_date,
+        )
         issues = C.check(output)
         if issues:
             raise AssertionError(issues)
@@ -97,6 +138,8 @@ def main() -> int:
             "한글표셀검증",
             "검증 문서",
             "사수준 제목",
+            revision_note,
+            revision_author,
         ):
             if token not in section:
                 raise AssertionError(f"의미·본문 보존 실패: {token}")
@@ -106,6 +149,38 @@ def main() -> int:
             raise AssertionError("한글이 코드 표기로 기록됨")
         if H.missing_hangul_runs(["한글표셀검증"], "hangeul-table-cell") != ["한글표셀검증"]:
             raise AssertionError("한글 ASCII 대체를 원문 불일치로 탐지하지 못함")
+
+        for invalid_version in (
+            "v1",
+            "v01.1",
+            "v0." + "9" * 10,
+            "v0." + ".".join("1" for _ in range(40)),
+        ):
+            try:
+                H.validate_artifact_version(invalid_version)
+            except H.HeadlessHwpxError:
+                pass
+            else:
+                raise AssertionError(f"비정상 또는 과도한 버전을 허용함: {invalid_version!r}")
+
+        _, _, recorded_table = revision_table(section)
+        revision = H.analyze_revision_table(
+            recorded_table,
+            require_record=True,
+            require_empty_row=True,
+        )
+        if revision.issues or len(revision.records) != 1:
+            raise AssertionError(f"최초 개정 이력 검사 실패: {revision!r}")
+        record = revision.records[0]
+        if (record.row, record.date, record.version, record.note, record.author, record.confirmer) != (
+            1,
+            revision_date,
+            "v0.1",
+            revision_note,
+            revision_author,
+            "",
+        ):
+            raise AssertionError(f"개정 이력 readback 불일치: {record!r}")
 
         paragraph_texts = []
         header = H.get_text(H.read_hwpx(output), H.HEADER)
@@ -188,6 +263,178 @@ def main() -> int:
         escaped_issues = C.check(escaped_hangul)
         if not any(issue["rule"] == "한글 원문 보존" for issue in escaped_issues):
             raise AssertionError("한글 숫자 문자참조를 검사기가 탐지하지 못함")
+
+        # 개정표와 파일명 버전 검사: 불일치와 복수 토큰은 각각 실패해야 한다.
+        filename_mismatch = temp / "filename-mismatch_v0.2.hwpx"
+        write_revision_variant(output, filename_mismatch, {})
+        require_issue(C.check(filename_mismatch), "파일명 버전", "다름")
+
+        multiple_versions = temp / "multiple_v0.1_copy_v0.1.hwpx"
+        write_revision_variant(output, multiple_versions, {})
+        require_issue(C.check(multiple_versions), "파일명 버전", "단일하지 않음")
+
+        random_like_name = temp / ".ax1-headless-fmt-v1_abc_v0.1.hwpx"
+        write_revision_variant(output, random_like_name, {})
+        if H.artifact_filename_versions(random_like_name) != ["v0.1"]:
+            raise AssertionError("임시 파일명 난수 일부를 버전 토큰으로 오인함")
+        if C.check(random_like_name):
+            raise AssertionError("유효한 끝 버전 앞의 일반 문자열을 잘못 거부함")
+
+        # 부분 기록, 중복·역순 버전, 빈 행 소진을 서로 독립적으로 탐지한다.
+        partial = temp / "partial_v0.1.hwpx"
+        write_revision_variant(output, partial, {2: ("2026-09-03", "", "", "")})
+        require_issue(C.check(partial), "개정 이력", "빈 필드")
+
+        duplicate = temp / "duplicate_v0.1.hwpx"
+        write_revision_variant(output, duplicate, {2: ("2026-09-03", "v0.1", "중복", "")})
+        require_issue(C.check(duplicate), "개정 이력", "중복 버전")
+
+        descending = temp / "descending_v0.2.hwpx"
+        write_revision_variant(
+            output,
+            descending,
+            {
+                2: ("2026-09-03", "v0.3", "앞선 기록", ""),
+                3: ("2026-09-04", "v0.2", "역순 기록", ""),
+            },
+        )
+        require_issue(C.check(descending), "개정 이력", "커지지 않음")
+
+        saturated = temp / "saturated_v0.4.hwpx"
+        write_revision_variant(
+            output,
+            saturated,
+            {
+                2: ("2026-09-03", "v0.2", "두 번째", ""),
+                3: ("2026-09-04", "v0.3", "세 번째", ""),
+                4: ("2026-09-05", "v0.4", "네 번째", ""),
+            },
+        )
+        require_issue(C.check(saturated), "개정 이력", "빈 행이 없어")
+
+        missing_revision = temp / "missing-revision_v0.1.hwpx"
+        missing_entries = H.read_hwpx(output)
+        missing_section = H.get_text(missing_entries, H.SECTION).replace("개정일자", "개정 일자", 1)
+        H.set_text(missing_entries, H.SECTION, missing_section)
+        H.write_hwpx(missing_entries, missing_revision)
+        require_issue(C.check(missing_revision), "개정 이력", "1개가 아님")
+
+        bad_signature = temp / "bad-signature_v0.1.hwpx"
+        signature_entries = H.read_hwpx(output)
+        signature_section = (
+            H.get_text(signature_entries, H.SECTION)
+            .replace("문서정보", "문서안내")
+            .replace("문서 정보", "문서 안내")
+        )
+        H.set_text(signature_entries, H.SECTION, signature_section)
+        H.write_hwpx(signature_entries, bad_signature)
+        require_issue(C.check(bad_signature), "승인 템플릿 경계", "시그니처")
+
+        row_overflow = temp / "row-overflow_v0.1.hwpx"
+        overflow_entries = H.read_hwpx(output)
+        overflow_section = H.get_text(overflow_entries, H.SECTION)
+        overflow_start, overflow_end, overflow_table = revision_table(overflow_section)
+        table_rows = re.findall(r"<hp:tr(?:\s[^>]*)?>.*?</hp:tr>", overflow_table, re.S)
+        if not table_rows:
+            raise AssertionError("개정 이력표의 실제 행을 찾지 못함")
+        hidden_row = table_rows[-1].replace('rowAddr="4"', 'rowAddr="5"')
+        if hidden_row == table_rows[-1]:
+            raise AssertionError("개정 이력표 범위 밖 행 변형에 실패함")
+        overflow_table = overflow_table.replace("</hp:tbl>", hidden_row + "</hp:tbl>", 1)
+        H.set_text(
+            overflow_entries,
+            H.SECTION,
+            overflow_section[:overflow_start] + overflow_table + overflow_section[overflow_end:],
+        )
+        H.write_hwpx(overflow_entries, row_overflow)
+        require_issue(C.check(row_overflow), "개정 이력", "rowCnt")
+
+        oversized_count = recorded_table.replace('rowCnt="5"', 'rowCnt="' + "9" * 5000 + '"', 1)
+        oversized_analysis = H.analyze_revision_table(
+            oversized_count,
+            require_record=True,
+            require_empty_row=True,
+        )
+        if not any("rowCnt" in detail for detail in oversized_analysis.issues):
+            raise AssertionError("과도한 rowCnt를 안전하게 거부하지 못함")
+
+        # 잘못된 경로와 기존 대상은 본문이나 기존 파일을 전혀 건드리지 않고 거부한다.
+        wrong_version = temp / "wrong-version_v0.2.hwpx"
+        try:
+            B.build(
+                template,
+                content,
+                wrong_version,
+                cover,
+                artifact_version="v0.1",
+                revision_date=revision_date,
+            )
+        except H.HeadlessHwpxError:
+            pass
+        else:
+            raise AssertionError("요청 버전과 다른 출력 파일명을 거부하지 않음")
+        if wrong_version.exists():
+            raise AssertionError("파일명 검증 실패 뒤 출력 파일이 남음")
+
+        multiple_target = temp / "requested_v0.1_copy_v0.1.hwpx"
+        try:
+            B.build(
+                template,
+                content,
+                multiple_target,
+                cover,
+                artifact_version="v0.1",
+                revision_date=revision_date,
+            )
+        except H.HeadlessHwpxError:
+            pass
+        else:
+            raise AssertionError("복수 버전 토큰 출력 파일명을 거부하지 않음")
+        if multiple_target.exists():
+            raise AssertionError("복수 버전 토큰 검증 실패 뒤 출력 파일이 남음")
+
+        existing = temp / "existing_v0.1.hwpx"
+        sentinel = b"existing-user-file"
+        existing.write_bytes(sentinel)
+        try:
+            B.build(
+                template,
+                content,
+                existing,
+                cover,
+                revision_date=revision_date,
+            )
+        except H.HeadlessHwpxError:
+            pass
+        else:
+            raise AssertionError("기존 출력 대상을 거부하지 않음")
+        if existing.read_bytes() != sentinel:
+            raise AssertionError("실패 처리에서 기존 사용자 파일을 변경하거나 삭제함")
+        cli = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT_DIR / "build_headless_artifact.py"),
+                "--content", str(content),
+                "-o", str(existing),
+                "--agency", cover["agency"],
+                "--program", cover["program"],
+                "--project-number", cover["project_number"],
+                "--project", cover["project"],
+                "--title", cover["title"],
+                "--document-type", cover["document_type"],
+                "--revision-date", revision_date,
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            env={**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"},
+        )
+        if cli.returncode != 2 or existing.read_bytes() != sentinel:
+            raise AssertionError(
+                "CLI 실패 처리에서 기존 사용자 파일을 보존하지 못함: "
+                + cli.stdout
+                + cli.stderr
+            )
 
         A.apply(output, output2)
         if C.check(output2):

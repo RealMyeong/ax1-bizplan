@@ -56,10 +56,32 @@ def check(path: Path) -> list:
             )
 
     # 0. 불가침 구간 경계
+    is_ax1_artifact = H.ax1_front_matter_signature(section, body_start)
     if body_start is None:
         add("불가침 구간", "목차 문단을 찾지 못해 본문 시작 위치를 판정할 수 없음. 사용자 확인 필요")
         body_start = 0
     front_fills = H.front_matter_fill_ids(section, body_start)
+
+    # 0-2. 이 검사기는 승인 AX1 경량 생성물 전용이므로 표지 시그니처도 fail-closed로 본다.
+    if not is_ax1_artifact:
+        add("승인 템플릿 경계", "AX1 표지·문서정보 시그니처를 확인할 수 없음")
+    else:
+        revision_spans = H.revision_table_spans(section, body_start)
+        if len(revision_spans) != 1:
+            add("개정 이력", f"정확한 개정 이력표가 1개가 아님: {len(revision_spans)}개")
+            expected_version = None
+        else:
+            start, end = revision_spans[0]
+            analysis = H.analyze_revision_table(
+                section[start:end],
+                require_record=True,
+                require_empty_row=True,
+            )
+            for detail in analysis.issues:
+                add("개정 이력", detail)
+            expected_version = analysis.records[-1].version if analysis.records else None
+        for detail in H.artifact_filename_issues(path, expected_version):
+            add("파일명 버전", detail)
 
     # 1. 글꼴 - 불가침 표지는 템플릿 그대로 두고 생성 본문만 검사한다.
     if not malgun_ids:

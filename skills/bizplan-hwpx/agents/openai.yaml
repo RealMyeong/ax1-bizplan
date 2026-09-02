@@ -1,6 +1,6 @@
 interface:
   display_name: "AX1 한글 문서·사업계획서"
   short_description: "공식 사업계획서와 AX1 산출물 HWPX 작성·검증"
-  default_prompt: "$bizplan-hwpx를 사용해 사업계획서는 공식 양식을 보존하고 일반 산출물은 승인 AX1 템플릿으로 HWPX를 작성·검증해줘."
+  default_prompt: "$bizplan-hwpx를 사용해 문서 목적을 먼저 분기해 이해 내용을 확인하고, 사업계획서는 공식 양식을 보존하며 일반 산출물은 승인 AX1 템플릿으로 HWPX를 작성·검증해줘."
 policy:
   allow_implicit_invocation: true

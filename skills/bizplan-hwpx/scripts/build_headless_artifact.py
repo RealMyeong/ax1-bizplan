@@ -1,6 +1,6 @@
 """승인된 AX1 표지 양식에 확정 본문을 채워 HWPX를 만든다.
 
-    python build_headless_artifact.py --content <본문.md> -o <출력.hwpx> [표지 정보]
+    python build_headless_artifact.py --content <본문.md> -o <출력_v0.1.hwpx> [표지 정보]
 
 양식의 표지~목차 제목은 손대지 않고 그 뒤에 목차 항목과 본문을 이어붙인 뒤,
 서식 규칙을 적용한다. 마크다운 앞부분의 표지·문서정보·개정이력·목차는 양식이
@@ -17,7 +17,6 @@
 from __future__ import annotations
 
 import argparse
-import os
 import re
 import sys
 import tempfile
@@ -517,7 +516,94 @@ def fill_cover(section: str, header: str, values: dict[str, str], log: list) -> 
     return section
 
 
-def build(template: Path, content: Path, out: Path, cover: dict[str, str], make_toc=True) -> list:
+def record_initial_revision(
+    section: str,
+    header: str,
+    *,
+    version: str,
+    revision_date: str,
+    note: str,
+    author: str,
+    log: list,
+) -> str:
+    """승인 AX1 빈 개정표의 데이터 첫 행에 최초 기록만 추가한다."""
+    body_start = H.body_start_offset(section)
+    if not H.ax1_front_matter_signature(section, body_start):
+        raise H.HeadlessHwpxError("승인 AX1 템플릿의 표지 구조를 확인할 수 없음")
+    spans = H.revision_table_spans(section, body_start)
+    if len(spans) != 1:
+        raise H.HeadlessHwpxError(f"개정 이력표를 정확히 하나로 식별할 수 없음: {len(spans)}개")
+    start, end = spans[0]
+    table = section[start:end]
+    analysis = H.analyze_revision_table(table, require_record=False, require_empty_row=True)
+    if analysis.issues:
+        raise H.HeadlessHwpxError("개정 이력표 사전검사 실패: " + "; ".join(analysis.issues))
+    if analysis.records:
+        raise H.HeadlessHwpxError("새 일반 산출물은 빈 개정 이력표에서만 생성할 수 있음")
+    if not analysis.empty_rows or analysis.empty_rows[0] != 1:
+        raise H.HeadlessHwpxError("개정 이력의 데이터 첫 행이 비어 있지 않음")
+
+    char_prs = H.parse_char_prs(header)
+    regular, boldfont = H.Font(H.MALGUN), H.Font(H.MALGUN_BOLD)
+
+    def relayout(paragraph: str) -> str:
+        return relayout_paragraph(paragraph, char_prs, regular, boldfont)
+
+    values = (revision_date, version, note, author)
+    for column, value in enumerate(values):
+        if value:
+            table = H.set_revision_cell_text(
+                table,
+                1,
+                column,
+                value,
+                require_empty=True,
+                paragraph_transform=relayout,
+            )
+    verified = H.analyze_revision_table(table, require_record=True, require_empty_row=True)
+    if verified.issues or len(verified.records) != 1:
+        details = verified.issues or [f"개정 기록 수가 1개가 아님: {len(verified.records)}"]
+        raise H.HeadlessHwpxError("개정 이력표 기록 후 검사 실패: " + "; ".join(details))
+    record = verified.records[0]
+    if (record.date, record.version, record.note, record.author, record.confirmer) != (
+        revision_date,
+        version,
+        note,
+        author,
+        "",
+    ):
+        raise H.HeadlessHwpxError("개정 이력표 기록값 readback이 요청값과 일치하지 않음")
+    log.append(
+        f"개정 이력 첫 행 기록: {revision_date} / {version} / {note!r}"
+        + (f" / 작성자 {author!r}" if author else " / 작성자 미입력")
+        + " / 확인자 미입력"
+    )
+    return section[:start] + table + section[end:]
+
+
+def build(
+    template: Path,
+    content: Path,
+    out: Path,
+    cover: dict[str, str],
+    make_toc=True,
+    artifact_version="v0.1",
+    revision_note="최초 작성",
+    revision_author="",
+    revision_date=None,
+) -> list:
+    artifact_version = H.validate_artifact_version(artifact_version)
+    revision_date = H.normalize_revision_date(revision_date)
+    if not isinstance(revision_note, str) or not revision_note.strip():
+        raise H.HeadlessHwpxError("개정내역은 비어 있을 수 없음")
+    if not isinstance(revision_author, str):
+        raise H.HeadlessHwpxError("개정 작성자는 문자열이어야 함")
+    out = H.require_new_artifact_output(Path(out), artifact_version)
+    template = Path(template)
+    approved = default_template()
+    if template.resolve() != approved.resolve():
+        raise H.HeadlessHwpxError("경량 생성은 스킬에 포함된 승인 AX1 템플릿만 사용할 수 있음")
+
     log = []
     entries = H.read_hwpx(template)
     header = H.get_text(entries, H.HEADER)
@@ -567,6 +653,15 @@ def build(template: Path, content: Path, out: Path, cover: dict[str, str], make_
             parts.append(emitter.table(block[1], regular, boldfont))
 
     section = fill_cover(section, header, cover, log)
+    section = record_initial_revision(
+        section,
+        header,
+        version=artifact_version,
+        revision_date=revision_date,
+        note=revision_note,
+        author=revision_author,
+        log=log,
+    )
     try:
         preview = H.get_text(entries, H.PREVIEW)
         for placeholder, key in (
@@ -585,7 +680,7 @@ def build(template: Path, content: Path, out: Path, cover: dict[str, str], make_
         raise SystemExit("section0.xml 에서 </hs:sec> 를 찾지 못했다")
     section = section.replace("</hs:sec>", "".join(parts) + "</hs:sec>", 1)
 
-    source_texts = list(cover.values())
+    source_texts = list(cover.values()) + [revision_note, revision_author]
     for block in blocks:
         if block[0] in {"h", "li"}:
             source_texts.append(block[2])
@@ -608,13 +703,16 @@ def build(template: Path, content: Path, out: Path, cover: dict[str, str], make_
     H.set_text(entries, H.SECTION, section)
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    handle, raw_name = tempfile.mkstemp(prefix=f".{out.stem}-raw-", suffix=".hwpx", dir=out.parent)
-    os.close(handle)
-    raw_path = Path(raw_name)
-    handle, fmt_name = tempfile.mkstemp(prefix=f".{out.stem}-fmt-", suffix=".hwpx", dir=out.parent)
-    os.close(handle)
-    fmt_path = Path(fmt_name)
+    temp_manager = tempfile.TemporaryDirectory(
+        prefix=".ax1-headless-build-",
+        dir=out.parent,
+        ignore_cleanup_errors=True,
+    )
+    temp_root = Path(temp_manager.name)
+    build_error = None
     try:
+        raw_path = temp_root / f"raw_{artifact_version}.hwpx"
+        fmt_path = temp_root / f"formatted_{artifact_version}.hwpx"
         H.write_hwpx(entries, raw_path)
         log.append("승인 양식 뒤에 본문 삽입 완료")
         log.append("--- 경량 서식 적용 ---")
@@ -623,10 +721,23 @@ def build(template: Path, content: Path, out: Path, cover: dict[str, str], make_
         if issues:
             summary = "; ".join(f"{item['rule']}: {item['detail']}" for item in issues[:8])
             raise H.HeadlessHwpxError("경량 생성 후 자동검사 실패: " + summary)
-        os.replace(fmt_path, out)
+        H.publish_new_file(fmt_path, out)
+    except Exception as exc:
+        build_error = exc
     finally:
-        raw_path.unlink(missing_ok=True)
-        fmt_path.unlink(missing_ok=True)
+        temp_manager.cleanup()
+    cleanup_pending = temp_root.exists()
+    if build_error is not None:
+        if cleanup_pending:
+            raise H.HeadlessHwpxError(
+                f"{build_error}; 민감정보가 포함될 수 있는 임시 폴더를 삭제하지 못함: {temp_root}"
+            ) from build_error
+        raise build_error
+    if cleanup_pending:
+        log.append(
+            "[경고] 출력은 생성했지만 민감정보가 포함될 수 있는 임시 폴더를 "
+            f"삭제하지 못함. 수동 삭제 필요: {temp_root}"
+        )
     log.append(f"구조·서식 자동검사 통과 후 저장 -> {out}")
     return log
 
@@ -642,6 +753,10 @@ def main() -> int:
     ap.add_argument("--title", required=True, help="산출물 제목")
     ap.add_argument("--document-type", required=True, help="문서 유형")
     ap.add_argument("--no-toc", action="store_true", help="목차 항목을 만들지 않음")
+    ap.add_argument("--artifact-version", default="v0.1", help="산출물 버전 (기본: v0.1)")
+    ap.add_argument("--revision-note", default="최초 작성", help="개정 이력의 개정내역 (기본: 최초 작성)")
+    ap.add_argument("--revision-author", default="", help="개정 이력의 작성자; 확인자는 자동 입력하지 않음")
+    ap.add_argument("--revision-date", default=None, help="테스트·재현용 개정일자 YYYY-MM-DD; 기본은 한국 날짜")
     args = ap.parse_args()
 
     try:
@@ -663,10 +778,19 @@ def main() -> int:
         "document_type": args.document_type,
     }
     try:
-        for line in build(template, args.content, args.out, cover, not args.no_toc):
+        for line in build(
+            template,
+            args.content,
+            args.out,
+            cover,
+            not args.no_toc,
+            args.artifact_version,
+            args.revision_note,
+            args.revision_author,
+            args.revision_date,
+        ):
             print(line)
     except (H.HeadlessHwpxError, OSError, ValueError) as exc:
-        args.out.unlink(missing_ok=True)
         print(f"[중단] {exc}")
         return 2
     print("\ncheck_headless_artifact.py 로 검사하고 최종본은 한컴에서 직접 확인할 것")

@@ -1,21 +1,21 @@
 {
   "name": "ax1-bizplan",
-  "version": "0.7.3",
-  "description": "AX1 팀의 국가 R&D·공모 사업계획서 작성, 창 없는 승인 템플릿 HWPX 생성, 공식 양식 반영, 최신 산출물 연동·버전 보관·검토·제출 점검 스킬 모음",
+  "version": "0.8.0",
+  "description": "AX1 팀의 사업계획서 작성·HWPX 처리와 보고·제안 발표자료 제작을 공통 확인·버전·연동 정책으로 수행하는 통합 스킬팩",
   "author": {
     "name": "AX1 Team"
   },
   "skills": "./skills/",
   "interface": {
-    "displayName": "AX1 Bizplan",
-    "shortDescription": "AX1 사업계획서 작성·경량 HWPX·검토·수정 워크플로",
-    "longDescription": "국가 R&D와 공모 사업계획서의 작업공간 준비부터 초안, 승인 템플릿의 창 없는 HWPX 생성과 공식 양식 반영, 최신 산출물 간 내용 연동과 이전버전 관리, 검토, 수정, 제출 전 점검과 근거 업데이트까지 지원합니다.",
+    "displayName": "AX1 Skill Pack",
+    "shortDescription": "AX1 사업계획서·HWPX·발표자료 통합 제작 워크플로",
+    "longDescription": "국가 R&D와 공모 사업계획서의 준비·초안·HWPX·검토·수정·제출 점검뿐 아니라, 보고·제안 발표자료의 스토리보드와 편집형·이미지형 PPTX 제작까지 공통 확인·최신본·연동 정책으로 지원합니다.",
     "developerName": "AX1 Team",
     "category": "Productivity",
     "capabilities": [
       "Interactive",
       "Write"
     ],
-    "defaultPrompt": "현재 사업계획서 작업 단계에 맞는 AX1 Bizplan 스킬을 선택해 진행해줘."
+    "defaultPrompt": "현재 산출물 목적과 작업 단계에 맞는 AX1 전문 스킬을 선택해 진행해줘."
   }
 }

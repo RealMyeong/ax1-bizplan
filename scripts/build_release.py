@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Synchronize, validate, and package the AX1 Bizplan skill suite."""
+"""Synchronize, validate, and package the AX1 Skill Pack."""
 
 from __future__ import annotations
 
@@ -52,6 +52,13 @@ ALL_SKILLS = (
     *GENERAL_SKILLS,
     "bizplan-hwpx",
     "bizplan-evidence-update",
+    "ax1-presentation",
+)
+
+INSTALLATION_GUIDES = (
+    "README.md",
+    "docs/team-guide.md",
+    "docs/ax1-bizplan-guide.html",
 )
 
 APPROVED_HWPX_ASSET = Path("skills/bizplan-hwpx/assets/templates/ax1-deliverable-cover.hwpx")
@@ -106,6 +113,7 @@ CONFIRMATION_REFERENCES = {
     "bizplan-preflight": "references/12-user-confirmation-gate.md",
     "bizplan-hwpx": "references/07-user-confirmation-gate.md",
     "bizplan-evidence-update": "references/06-user-confirmation-gate.md",
+    "ax1-presentation": "references/05-user-confirmation-gate.md",
 }
 
 
@@ -171,6 +179,26 @@ def sync_shared_resources() -> None:
     copy_file(
         "shared/templates/artifact-sync-ledger-template.md",
         SKILLS_ROOT / "bizplan-hwpx" / "assets" / "artifact-sync-ledger-template.md",
+    )
+    copy_file(
+        "shared/core/12-user-confirmation-gate.md",
+        SKILLS_ROOT / "ax1-presentation" / "references" / "05-user-confirmation-gate.md",
+    )
+    copy_file(
+        "shared/core/10-artifact-version-management.md",
+        SKILLS_ROOT / "ax1-presentation" / "references" / "06-artifact-version-management.md",
+    )
+    copy_file(
+        "shared/core/11-artifact-synchronization.md",
+        SKILLS_ROOT / "ax1-presentation" / "references" / "07-artifact-synchronization.md",
+    )
+    copy_file(
+        "shared/templates/artifact-version-ledger-template.md",
+        SKILLS_ROOT / "ax1-presentation" / "assets" / "artifact-version-ledger-template.md",
+    )
+    copy_file(
+        "shared/templates/artifact-sync-ledger-template.md",
+        SKILLS_ROOT / "ax1-presentation" / "assets" / "artifact-sync-ledger-template.md",
     )
 
 
@@ -288,6 +316,17 @@ def validate_confirmation_gate() -> None:
             raise ValueError(f"{skill_name}: explicit subsequent-turn confirmation is missing")
 
 
+def validate_installation_guides() -> None:
+    for relative in INSTALLATION_GUIDES:
+        path = ROOT / relative
+        text = path.read_text(encoding="utf-8")
+        missing = [skill_name for skill_name in ALL_SKILLS if skill_name not in text]
+        if missing:
+            raise ValueError(f"{relative}: installation guide is missing skills: {missing}")
+        if "8개 스킬" not in text:
+            raise ValueError(f"{relative}: installation guide must state the complete 8-skill set")
+
+
 def validate_contributor_policy() -> None:
     for relative in CONTRIBUTOR_POLICY_FILES:
         path = ROOT / relative
@@ -328,6 +367,37 @@ def validate_headless_scripts_are_stdlib_only() -> None:
         external = sorted(imported - allowed)
         if external:
             raise ValueError(f"{path.relative_to(ROOT)} imports non-stdlib modules: {external}")
+
+
+def validate_presentation_scripts_are_local_only() -> None:
+    script_root = SKILLS_ROOT / "ax1-presentation" / "scripts"
+    paths = [
+        script_root / "assemble_image_deck.py",
+        script_root / "check_presentation.py",
+    ]
+    allowed_external = {"PIL", "pptx"}
+    forbidden = {"httpx", "openai", "requests", "socket", "urllib"}
+    for path in paths:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        imported = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported.update(alias.name.split(".")[0] for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                imported.add(node.module.split(".")[0])
+        disallowed = sorted(imported & forbidden)
+        external = sorted(imported - set(sys.stdlib_module_names) - allowed_external)
+        if disallowed or external:
+            raise ValueError(
+                f"{path.relative_to(ROOT)} has disallowed imports: "
+                f"forbidden={disallowed}, unexpected={external}"
+            )
+    requirements = (SKILLS_ROOT / "ax1-presentation" / "requirements.txt").read_text(
+        encoding="utf-8"
+    )
+    normalized = {line.split(">=")[0].strip() for line in requirements.splitlines() if line.strip()}
+    if normalized != {"Pillow", "python-pptx"}:
+        raise ValueError("ax1-presentation requirements must be limited to Pillow and python-pptx")
 
 
 def validate_approved_hwpx_asset() -> None:
@@ -427,6 +497,22 @@ def validate_headless_acceptance() -> None:
         )
 
 
+def validate_presentation_acceptance() -> None:
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "presentation_acceptance_test.py")],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    if result.returncode != 0:
+        raise ValueError(
+            "presentation acceptance test failed:\n"
+            + result.stdout
+            + result.stderr
+        )
+
+
 def validate_skills() -> dict[str, str]:
     validate_no_private_artifacts()
     versions: dict[str, str] = {}
@@ -438,10 +524,13 @@ def validate_skills() -> dict[str, str]:
         validate_openai_yaml(skill)
         validate_references(skill)
     validate_confirmation_gate()
+    validate_installation_guides()
     validate_contributor_policy()
     validate_headless_scripts_are_stdlib_only()
+    validate_presentation_scripts_are_local_only()
     validate_approved_hwpx_asset()
     validate_headless_acceptance()
+    validate_presentation_acceptance()
     validate_lint_examples()
     validate_plugin()
     return versions
@@ -510,7 +599,7 @@ def changelog_section(version: str) -> str:
 def write_release_notes(versions: dict[str, str]) -> None:
     highlights = changelog_section(SUITE_VERSION)
     lines = [
-        f"# AX1 Bizplan v{SUITE_VERSION}",
+        f"# AX1 Skill Pack v{SUITE_VERSION}",
         "",
         "## 주요 변경사항",
         "",

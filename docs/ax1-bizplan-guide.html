@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <title>AX1 Bizplan 설치·활용·배포 안내</title>
+  <title>AX1 Skill Pack 설치·활용·배포 안내</title>
   <script>document.documentElement.classList.add('js');</script>
   <style>
     :root {
@@ -367,8 +367,8 @@
 <body>
   <header class="topbar">
     <div class="topbar-inner">
-      <div class="brand"><span class="brand-mark">AX1</span> AX1 Bizplan</div>
-      <div class="version">안정 버전 v0.7.3 · 2026-09-01</div>
+      <div class="brand"><span class="brand-mark">AX1</span> AX1 Skill Pack</div>
+      <div class="version">안정 버전 v0.8.0 · 2026-09-02</div>
     </div>
   </header>
 
@@ -410,10 +410,10 @@
           <p>GitHub 접근 권한이 있으면 아래 내용을 새 Codex 작업에 붙여넣습니다.</p>
           <div class="code-wrap">
             <button class="copy-button" type="button">복사</button>
-            <pre><code>$skill-installer를 사용해서 AX1 Bizplan 스킬을 사용자 범위에 설치해줘.
+            <pre><code>$skill-installer를 사용해서 AX1 Skill Pack을 사용자 범위에 설치해줘.
 
 설치 원본: https://github.com/RealMyeong/ax1-bizplan
-대상: 저장소의 skills 폴더에 있는 7개 스킬 전체
+대상: 저장소의 skills 폴더에 있는 8개 스킬 전체
 
 1. VERSION과 최신 안정 Release를 확인해줘.
 2. 기존 버전과 위치를 확인하고 먼저 백업해줘.
@@ -426,10 +426,10 @@
 
         <article class="card">
           <h3>Claude Code 설치 요청문</h3>
-          <p>Claude Code 사용자 스킬 경로에 7개 스킬을 함께 설치합니다.</p>
+          <p>Claude Code 사용자 스킬 경로에 8개 스킬을 함께 설치합니다.</p>
           <div class="code-wrap">
             <button class="copy-button" type="button">복사</button>
-            <pre><code>AX1 Bizplan 스킬을 모든 프로젝트에서 사용할 수 있도록 사용자 스킬로 설치해줘.
+            <pre><code>AX1 Skill Pack을 모든 프로젝트에서 사용할 수 있도록 사용자 스킬로 설치해줘.
 
 설치 원본: https://github.com/RealMyeong/ax1-bizplan
 원본 폴더: skills
@@ -437,7 +437,7 @@
 
 1. VERSION과 최신 안정 Release를 확인해줘.
 2. 기존 AX1 스킬이 있으면 먼저 백업해줘.
-3. 7개 스킬을 참조·에셋·스크립트와 함께 설치해줘.
+3. 8개 스킬을 참조·에셋·스크립트와 함께 설치해줘.
 4. 설치 전후 버전과 스킬 목록을 알려줘.
 5. Claude Code가 스킬을 인식하는지 확인해줘.</code></pre>
           </div>
@@ -450,7 +450,7 @@
           </div>
           <div class="code-wrap">
             <button class="copy-button" type="button">복사</button>
-            <pre><code>첨부한 AX1 Bizplan Release ZIP과 SHA256SUMS.txt의 체크섬을 확인해줘. 기존 버전을 백업한 뒤 7개 스킬을 사용자 범위에 설치하고, 설치 전후 버전과 검증 결과를 알려줘.</code></pre>
+            <pre><code>첨부한 AX1 Skill Pack Release ZIP과 SHA256SUMS.txt의 체크섬을 확인해줘. 기존 버전을 백업한 뒤 8개 스킬을 사용자 범위에 설치하고, 설치 전후 버전과 검증 결과를 알려줘.</code></pre>
           </div>
         </article>
 
@@ -507,6 +507,7 @@ AX1 검증 ref: b7ab90a1db826c5fa5db024ad01dc5132d073953
                 <tr><td><code>bizplan-revise</code></td><td>검토·평가의견을 문서 전체에 일관되게 반영</td><td><code>$bizplan-revise</code> / <code>/bizplan-revise</code></td></tr>
                 <tr><td><code>bizplan-preflight</code></td><td>제출 직전 빈칸·형식·수치·도표·파일명 점검</td><td><code>$bizplan-preflight</code> / <code>/bizplan-preflight</code></td></tr>
                 <tr><td><code>bizplan-evidence-update</code></td><td>배포자가 검증된 새 근거를 스킬에 반영할 때</td><td>일반 팀원은 실행하지 않고 Form 접수</td></tr>
+                <tr><td><code>ax1-presentation</code></td><td>스토리보드를 확정하고 편집형 또는 이미지형 PPTX·노트·검증본 제작</td><td><code>$ax1-presentation</code> / <code>/ax1-presentation</code></td></tr>
               </tbody>
             </table>
           </div>
@@ -567,7 +568,7 @@ AX1 검증 ref: b7ab90a1db826c5fa5db024ad01dc5132d073953
           <h3>업데이트 요청문</h3>
           <div class="code-wrap">
             <button class="copy-button" type="button">복사</button>
-            <pre><code>AX1 Bizplan을 최신 안정 버전으로 업데이트해줘. 기존 버전을 백업하고 7개 스킬을 함께 교체한 뒤 업데이트 전후 버전, 변경된 스킬과 검증 결과를 알려줘. HWPX 플러그인을 사용하면 upstream 버전과 건강검사도 확인해줘.</code></pre>
+            <pre><code>AX1 Skill Pack을 최신 안정 버전으로 업데이트해줘. 기존 버전을 백업하고 8개 스킬을 함께 교체한 뒤 업데이트 전후 버전, 변경된 스킬과 검증 결과를 알려줘. HWPX 플러그인을 사용하면 upstream 버전과 건강검사도 확인해줘.</code></pre>
           </div>
         </article>
       </div>
@@ -671,7 +672,7 @@ git switch -c fix/간단한-작업명</code></pre>
               </tbody>
             </table>
           </div>
-          <p>v0.7.0 이후에는 영향 파일·스킬 수가 많아도 호환 가능한 기존 기능 개선이면 패치를 기본으로 합니다. 변경은 <code>Unreleased</code>에 누적하고, 새 기능군이나 사용법 전환일 때만 관리자가 마이너를 승인합니다. 현재 안정 버전은 <code>v0.7.3</code>입니다.</p>
+          <p>v0.7.0 이후에는 영향 파일·스킬 수가 많아도 호환 가능한 기존 기능 개선이면 패치를 기본으로 합니다. 변경은 <code>Unreleased</code>에 누적하고, 새 기능군이나 사용법 전환일 때만 관리자가 마이너를 승인합니다. 현재 안정 버전은 <code>v0.8.0</code>입니다.</p>
         </article>
 
         <article class="card">
@@ -683,7 +684,7 @@ git status --short
 git diff --check
 git diff</code></pre>
           </div>
-          <p>전체 ZIP, 7개 개별 스킬 ZIP, 체크섬, <code>RELEASE_NOTES.md</code>와 저장 금지 자료 포함 여부를 확인합니다. 릴리스 노트의 주요 변경점은 현재 버전의 <code>CHANGELOG.md</code>에서 자동 생성됩니다. 모든 스킬은 첫 응답에서 도구 없이 이해 내용을 설명하고 별도 동의를 기다리는지, <code>바로 진행</code>·<code>질문 없이</code>·읽기 전용 요청도 이를 우회하지 않는지, 수정·실질적 범위 변경에는 재확인하는지 검증합니다. 초안 스킬 변경이면 최초 확인 뒤 첫 회차 질문 중지·부분 답변 후 다음 질문·명시적 즉시 작성의 세 경로를 확인합니다. HWPX 경량 변경이면 외부 패키지·GUI 없는 수용 테스트, 승인 템플릿 SHA-256, 단일 섹션 거부, 본문·표 셀 160%, 체크박스 의미 보존과 ZIP별 자산 포함을 확인하고, 일반 HWPX 변경이면 익명화 샘플의 dry-run·readback·프리뷰·Windows 한컴 전체 페이지 관찰까지 수행합니다. 결과물 관리 변경이면 산출물군별 최신 검증본만 작업공간에 남고 이전 묶음은 이력과 함께 보관되며, 의미 변경만 영향받는 최신 산출물에 단방향 연동되는지, 필수 후보 실패 시 부분 승격하지 않는지, 연동 대기 제출본을 준비로 판정하지 않는지도 확인합니다.</p>
+          <p>전체 ZIP, 8개 개별 스킬 ZIP, 체크섬, <code>RELEASE_NOTES.md</code>와 저장 금지 자료 포함 여부를 확인합니다. 릴리스 노트의 주요 변경점은 현재 버전의 <code>CHANGELOG.md</code>에서 자동 생성됩니다. 모든 스킬은 첫 응답에서 도구 없이 이해 내용을 설명하고 별도 동의를 기다리는지, <code>바로 진행</code>·<code>질문 없이</code>·읽기 전용 요청도 이를 우회하지 않는지, 수정·실질적 범위 변경에는 재확인하는지 검증합니다. 초안 스킬 변경이면 최초 확인 뒤 첫 회차 질문 중지·부분 답변 후 다음 질문·명시적 즉시 작성의 세 경로를 확인합니다. HWPX 경량 변경이면 외부 패키지·GUI 없는 수용 테스트, 승인 템플릿 SHA-256, 단일 섹션 거부, 본문·표 셀 160%, 체크박스 의미 보존과 ZIP별 자산 포함을 확인하고, 일반 HWPX 변경이면 익명화 샘플의 dry-run·readback·프리뷰·Windows 한컴 전체 페이지 관찰까지 수행합니다. 발표자료 변경이면 스토리보드·모드·이미지형 샘플 게이트, 이미지 번호·화면비·덮어쓰기 거부, 실제 한글 노트, PPTX 재개방과 모든 슬라이드 시각 검증을 확인합니다. 결과물 관리 변경이면 산출물군별 최신 검증본만 작업공간에 남고 이전 묶음은 이력과 함께 보관되며, 의미 변경만 영향받는 최신 산출물에 단방향 연동되는지, 필수 후보 실패 시 부분 승격하지 않는지, 연동 대기 제출본을 준비로 판정하지 않는지도 확인합니다.</p>
         </article>
 
         <article class="card">
@@ -716,17 +717,17 @@ git push origin vX.Y.Z</code></pre>
           <h3>팀 공지문</h3>
           <div class="code-wrap">
             <button class="copy-button" type="button">복사</button>
-            <pre><code>[AX1 Bizplan vX.Y.Z 배포]
+            <pre><code>[AX1 Skill Pack vX.Y.Z 배포]
 
 주요 변경
 - 변경사항 1
 - 변경사항 2
 
 대상
-- AX1 Bizplan을 사용하는 모든 팀원
+- AX1 Skill Pack을 사용하는 모든 팀원
 
 업데이트 방법
-Codex 또는 Claude에게 "AX1 Bizplan을 최신 안정 버전으로 업데이트하고 기존 버전을 백업한 뒤 설치 결과를 검증해줘"라고 요청하세요.
+Codex 또는 Claude에게 "AX1 Skill Pack을 최신 안정 버전으로 업데이트하고 기존 버전을 백업한 뒤 설치 결과를 검증해줘"라고 요청하세요.
 
 GitHub: https://github.com/RealMyeong/ax1-bizplan/releases/tag/vX.Y.Z
 GitHub 접근이 없으면 공유 드라이브의 ax1-bizplan-vX.Y.Z.zip을 사용하세요.
@@ -745,7 +746,7 @@ GitHub 접근이 없으면 공유 드라이브의 ax1-bizplan-vX.Y.Z.zip을 사�
     </section>
 
     <footer>
-      <strong>AX1 Bizplan</strong> · 저장소에는 스킬과 익명화된 근거만 보관합니다.<br>
+      <strong>AX1 Skill Pack</strong> · 저장소에는 스킬과 익명화된 근거만 보관합니다.<br>
       공식 참고: <a href="https://learn.chatgpt.com/docs/build-skills" target="_blank" rel="noreferrer">OpenAI Build skills</a> · <a href="https://code.claude.com/docs/en/skills" target="_blank" rel="noreferrer">Claude Code Skills</a>
     </footer>
   </main>

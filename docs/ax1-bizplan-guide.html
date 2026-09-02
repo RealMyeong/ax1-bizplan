@@ -379,14 +379,16 @@
         <h1 id="page-title">설치는 한 번,<br>개선은 한 곳으로.</h1>
         <p class="hero-copy">사업계획서와 일반 HWPX 산출물, 발표자료의 작성·검토·배포까지 이어지는 AX1 팀 전용 에이전트 스킬 운영 안내입니다.</p>
         <div class="quick-links" aria-label="주요 링크">
-          <a class="button-link" href="https://github.com/RealMyeong/ax1-bizplan/pulls" target="_blank" rel="noreferrer">개선 PR</a>
+          <a class="button-link" href="https://github.com/RealMyeong/ax1-bizplan/discussions" target="_blank" rel="noreferrer">아이디어 Discussion</a>
+          <a class="button-link secondary" href="https://github.com/RealMyeong/ax1-bizplan/issues" target="_blank" rel="noreferrer">문제 Issue</a>
+          <a class="button-link secondary" href="https://github.com/RealMyeong/ax1-bizplan/pulls" target="_blank" rel="noreferrer">개선 PR</a>
           <a class="button-link secondary" href="https://github.com/RealMyeong/ax1-bizplan/releases" target="_blank" rel="noreferrer">최신 Release</a>
           <a class="button-link secondary" href="https://github.com/RealMyeong/ax1-bizplan" target="_blank" rel="noreferrer">GitHub 저장소</a>
         </div>
       </div>
       <aside class="hero-aside">
         <strong>가장 중요한 원칙</strong>
-        사용자 범위에 설치하면 새 프로젝트에서도 다시 설치할 필요가 없습니다. 실제 사업계획서와 민감정보는 GitHub Issue·커밋·PR에 올리지 않습니다.
+        사용자 범위에 설치하면 새 프로젝트에서도 다시 설치할 필요가 없습니다. 실제 사업계획서와 민감정보는 GitHub Discussion·Issue·커밋·PR에 올리지 않습니다.
       </aside>
     </section>
 
@@ -578,31 +580,65 @@ AX1 검증 ref: b7ab90a1db826c5fa5db024ad01dc5132d073953
         </article>
 
         <article class="card span-2">
-          <h3>개선 PR 요청문</h3>
+          <h3>Discussion·Issue·PR 선택</h3>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>현재 상태</th><th>창구</th><th>판단 기준</th></tr></thead>
+              <tbody>
+                <tr><td>아이디어 단계</td><td>Discussion</td><td>방향·범위·대안에 관리자와 팀 의견이 필요함</td></tr>
+                <tr><td>정의된 문제·요구사항</td><td>Issue</td><td>재현·완료조건은 있으나 구현 전이며 추적이 필요함</td></tr>
+                <tr><td>구현·검증 준비</td><td>PR</td><td>한 가지 목적의 수정·테스트·변경 조각이 준비됨</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>에이전트가 선택 이유를 먼저 설명하게 합니다. Discussion이 비활성화됐으면 <code>논의 필요</code> Issue로 대체하고 관리자가 결정할 질문을 남깁니다.</p>
+          <div class="flow" style="grid-template-columns:repeat(5,minmax(0,1fr))">
+            <div class="flow-item"><span class="flow-no">1</span><strong>아이디어</strong><small>제안 정리</small></div>
+            <div class="flow-item"><span class="flow-no">2</span><strong>Discussion·Issue</strong><small>의견·추적</small></div>
+            <div class="flow-item"><span class="flow-no">3</span><strong>방향 협의</strong><small>구현 결정</small></div>
+            <div class="flow-item"><span class="flow-no">4</span><strong>수정·검증</strong><small>Fork 작업</small></div>
+            <div class="flow-item"><span class="flow-no">5</span><strong>PR</strong><small>원본에 제출</small></div>
+          </div>
+        </article>
+
+        <article class="card span-2">
+          <h3>Fork 기반 PR 흐름</h3>
+          <div class="flow" style="grid-template-columns:repeat(5,minmax(0,1fr))">
+            <div class="flow-item"><span class="flow-no">1</span><strong>원본 저장소</strong><small>Fork</small></div>
+            <div class="flow-item"><span class="flow-no">2</span><strong>내 GitHub 저장소</strong><small>Clone</small></div>
+            <div class="flow-item"><span class="flow-no">3</span><strong>로컬</strong><small>작업·Commit</small></div>
+            <div class="flow-item"><span class="flow-no">4</span><strong>내 작업 브랜치</strong><small>Push</small></div>
+            <div class="flow-item"><span class="flow-no">5</span><strong>원본 저장소</strong><small>Pull Request</small></div>
+          </div>
+          <p>에이전트는 팀원의 Fork를 <code>origin</code>, 원본 <code>RealMyeong/ax1-bizplan</code>을 <code>upstream</code>으로 확인하고 최신 <code>upstream/main</code>에서 <code>contrib/&lt;주제&gt;</code> 브랜치를 만듭니다. Fork의 <code>main</code>은 원본 동기화용으로 유지합니다.</p>
+        </article>
+
+        <article class="card span-2">
+          <h3>개선 제안 요청문</h3>
           <div class="code-wrap">
             <button class="copy-button" type="button">복사</button>
-            <pre><code>AX1 Skill Pack 저장소를 최신 main으로 준비하고 AGENTS.md, CONTRIBUTING.md와 docs/pr-operating-policy.md를 먼저 읽어줘.
+            <pre><code>AGENTS.md, CONTRIBUTING.md와 docs/pr-operating-policy.md를 먼저 읽고 아래 개선 내용의 성숙도를 판단해줘.
 
 개선할 내용: [문제 또는 아이디어]
 현재 결과: [현재 동작]
 기대 결과: [원하는 동작]
 
-민감정보 없는 예시로 재현한 뒤 한 가지 목적의 브랜치에서 수정하고 관련 테스트를 실행해줘. VERSION, 릴리즈용 CHANGELOG, 플러그인 버전과 태그는 수정하지 말고 .changes 변경 조각을 추가해줘. 검증 후 커밋·푸시하고 PR을 생성한 다음 PR 링크와 미검증 항목을 알려줘.</code></pre>
+Discussion, Issue, PR 중 적절한 창구와 선택 이유를 먼저 설명해줘. 아이디어 단계면 Discussion 또는 Issue에 민감정보 없는 제안과 관리자에게 확인할 질문만 등록하고 구현하지 마. 구현이 결정된 경우에만 내 Fork를 origin, 원본 저장소를 upstream으로 확인하고 최신 upstream/main 기준 contrib/&lt;주제&gt; 브랜치에서 수정·검증해줘. VERSION, 릴리즈용 CHANGELOG, 플러그인 버전과 태그는 수정하지 말고 .changes를 추가해줘. 내 Fork에 커밋·Push한 뒤 원본 저장소로 PR을 생성하고 링크와 미검증 항목을 알려줘.</code></pre>
           </div>
         </article>
       </div>
 
       <div class="callout safe">
-        <strong>개선 요청:</strong> 에이전트에게 문제·현재 결과·기대 결과를 설명하고 민감정보 없는 재현부터 수정·테스트·<code>.changes</code>·커밋·푸시·PR 생성까지 요청합니다. <a href="https://github.com/RealMyeong/ax1-bizplan/blob/main/CONTRIBUTING.md" target="_blank" rel="noreferrer">기여 안내</a>
+        <strong>개선 요청:</strong> 에이전트가 아이디어는 Discussion, 정의된 문제는 Issue, 구현·검증된 변경은 Fork 기반 PR로 선택하고 이유를 설명하게 합니다. <a href="https://github.com/RealMyeong/ax1-bizplan/blob/main/CONTRIBUTING.md" target="_blank" rel="noreferrer">기여 안내</a>
       </div>
       <div class="callout">
-        <strong>주간 배포:</strong> 팀원은 개선 PR을 수시로 올리고, 배포자는 일요일 취합·검증한 뒤 월요일 새 안정 Release와 팀원별 반영 내용·제외 범위·검증 상태를 안내합니다. 검증 완료 변경이 없는 주에는 빈 Release를 만들지 않습니다.
+        <strong>주간 배포:</strong> 팀원은 Discussion·Issue·PR을 수시로 올리고, 배포자는 일요일 구현 결정과 PR을 취합·검증한 뒤 월요일 새 안정 Release와 팀원별 반영 내용·제외 범위·검증 상태를 안내합니다. 검증 완료 변경이 없는 주에는 빈 Release를 만들지 않습니다.
       </div>
       <div class="callout danger">
-        <strong>입력 금지:</strong> 실제 사업계획서 내용, 기관명, 개인정보, 미공개 RFP·평가의견, 제한 Drive 내부 경로와 계정정보는 GitHub Issue·커밋·PR에 직접 입력하지 않습니다.
+        <strong>입력 금지:</strong> 실제 사업계획서 내용, 기관명, 개인정보, 미공개 RFP·평가의견, 제한 Drive 내부 경로와 계정정보는 GitHub Discussion·Issue·커밋·PR에 직접 입력하지 않습니다.
       </div>
       <div class="callout">
-        <strong>에이전트 요청 핵심:</strong> 저장소의 <code>AGENTS.md</code>, <code>CONTRIBUTING.md</code>, <code>docs/pr-operating-policy.md</code>를 먼저 읽고 한 가지 목적의 PR을 만들도록 합니다. 버전·태그·릴리즈 파일은 수정하지 않습니다.
+        <strong>에이전트 요청 핵심:</strong> 저장소 지침을 먼저 읽고 제안 채널과 이유를 설명하게 합니다. 구현 결정 뒤에만 Fork의 한 가지 목적 브랜치에서 PR을 만들며 버전·태그·릴리즈 파일은 수정하지 않습니다.
       </div>
     </section>
 
@@ -619,7 +655,7 @@ AX1 검증 ref: b7ab90a1db826c5fa5db024ad01dc5132d073953
         <article class="card">
           <h3>권장 운영 주기</h3>
           <div class="flow" style="grid-template-columns:repeat(3,minmax(0,1fr))">
-            <div class="flow-item"><span class="flow-no">1</span><strong>상시</strong><small>개선 PR 접수</small></div>
+            <div class="flow-item"><span class="flow-no">1</span><strong>상시</strong><small>Discussion·Issue·PR 접수</small></div>
             <div class="flow-item"><span class="flow-no">2</span><strong>일요일</strong><small>취합·선별 통합·검증</small></div>
             <div class="flow-item"><span class="flow-no">3</span><strong>월요일</strong><small>새 안정 릴리스·업데이트 안내</small></div>
           </div>
@@ -629,6 +665,8 @@ AX1 검증 ref: b7ab90a1db826c5fa5db024ad01dc5132d073953
         <article class="card">
           <h3>운영 바로가기</h3>
           <ul class="checklist">
+            <li><a href="https://github.com/RealMyeong/ax1-bizplan/discussions" target="_blank" rel="noreferrer">아이디어 Discussions</a></li>
+            <li><a href="https://github.com/RealMyeong/ax1-bizplan/issues" target="_blank" rel="noreferrer">문제·요구사항 Issues</a></li>
             <li><a href="https://github.com/RealMyeong/ax1-bizplan/pulls" target="_blank" rel="noreferrer">개선 PR 목록</a></li>
             <li><a href="https://github.com/RealMyeong/ax1-bizplan/releases" target="_blank" rel="noreferrer">GitHub Releases</a></li>
           </ul>
@@ -678,7 +716,7 @@ git switch -c fix/간단한-작업명</code></pre>
             <li>기여자는 VERSION·태그·릴리즈 파일을 수정하지 않음</li>
             <li>공통 확인 게이트와 산출물 연동 규칙을 최신 main 기준으로 적용</li>
             <li>실문서·개인정보·배포 권한 불명 자산을 제외</li>
-            <li>전체 ZIP과 개별 스킬 ZIP을 모두 설치 검증</li>
+            <li>공개 통합 ZIP과 CI 내부 개별 스킬 ZIP 격리 환경을 모두 설치 검증</li>
           </ul>
         </article>
 
@@ -706,7 +744,7 @@ git status --short
 git diff --check
 git diff</code></pre>
           </div>
-          <p>전체 ZIP, 8개 개별 스킬 ZIP, 체크섬, <code>RELEASE_NOTES.md</code>와 저장 금지 자료 포함 여부를 확인합니다. 릴리스 노트의 주요 변경점은 현재 버전의 <code>CHANGELOG.md</code>에서 자동 생성됩니다. 모든 스킬은 첫 응답에서 도구 없이 이해 내용을 설명하고 별도 동의를 기다리는지, <code>바로 진행</code>·<code>질문 없이</code>·읽기 전용 요청도 이를 우회하지 않는지, 수정·실질적 범위 변경에는 재확인하는지 검증합니다. HWPX 요청은 최종 산출물 기준으로 사업계획서·일반 산출물을 분기하고, 명확하면 자동 선택하며 모호할 때만 두 경로를 묻는지, 완전한 이해 설명 뒤의 선택+진행 동의만 중복 확인 없이 소비하는지 확인합니다. 초안 스킬 변경이면 최초 확인 뒤 첫 회차 질문 중지·부분 답변 후 다음 질문·명시적 즉시 작성의 세 경로를 확인합니다. HWPX 경량 변경이면 외부 패키지·GUI 없는 수용 테스트, 승인 템플릿 SHA-256, 단일 섹션 거부, 본문·표 셀 160%, 체크박스 의미 보존, 개정 이력·파일명 버전 일치, 기존 출력 무덮어쓰기와 ZIP별 자산 포함을 확인하고, 일반 HWPX 변경이면 익명화 샘플의 dry-run·readback·프리뷰·Windows 한컴 전체 페이지 관찰까지 수행합니다. 발표자료 변경이면 스토리보드·모드·이미지형 샘플 게이트, 이미지 번호·화면비·덮어쓰기 거부, 실제 한글 노트, PPTX 재개방과 모든 슬라이드 시각 검증을 확인합니다. 결과물 관리 변경이면 산출물군별 최신 검증본만 작업공간에 남고 이전 묶음은 이력과 함께 보관되며, 의미 변경만 영향받는 최신 산출물에 단방향 연동되는지, 필수 후보 실패 시 부분 승격하지 않는지, 연동 대기 제출본을 준비로 판정하지 않는지도 확인합니다.</p>
+          <p>공개용 통합 ZIP, 통합 ZIP 한 개만 가리키는 체크섬, <code>RELEASE_NOTES.md</code>와 저장 금지 자료 포함 여부를 확인합니다. 8개 개별 스킬 ZIP은 CI 내부 격리 검증에만 사용하고 GitHub Release에는 올리지 않습니다. 릴리스 노트의 주요 변경점은 현재 버전의 <code>CHANGELOG.md</code>에서 자동 생성됩니다. 모든 스킬은 첫 응답에서 도구 없이 이해 내용을 설명하고 별도 동의를 기다리는지, <code>바로 진행</code>·<code>질문 없이</code>·읽기 전용 요청도 이를 우회하지 않는지, 수정·실질적 범위 변경에는 재확인하는지 검증합니다. HWPX 요청은 최종 산출물 기준으로 사업계획서·일반 산출물을 분기하고, 명확하면 자동 선택하며 모호할 때만 두 경로를 묻는지, 완전한 이해 설명 뒤의 선택+진행 동의만 중복 확인 없이 소비하는지 확인합니다. 초안 스킬 변경이면 최초 확인 뒤 첫 회차 질문 중지·부분 답변 후 다음 질문·명시적 즉시 작성의 세 경로를 확인합니다. HWPX 경량 변경이면 외부 패키지·GUI 없는 수용 테스트, 승인 템플릿 SHA-256, 단일 섹션 거부, 본문·표 셀 160%, 체크박스 의미 보존, 개정 이력·파일명 버전 일치, 기존 출력 무덮어쓰기와 ZIP별 자산 포함을 확인하고, 일반 HWPX 변경이면 익명화 샘플의 dry-run·readback·프리뷰·Windows 한컴 전체 페이지 관찰까지 수행합니다. 발표자료 변경이면 스토리보드·모드·이미지형 샘플 게이트, 이미지 번호·화면비·덮어쓰기 거부, 실제 한글 노트, PPTX 재개방과 모든 슬라이드 시각 검증을 확인합니다. 결과물 관리 변경이면 산출물군별 최신 검증본만 작업공간에 남고 이전 묶음은 이력과 함께 보관되며, 의미 변경만 영향받는 최신 산출물에 단방향 연동되는지, 필수 후보 실패 시 부분 승격하지 않는지, 연동 대기 제출본을 준비로 판정하지 않는지도 확인합니다.</p>
         </article>
 
         <article class="card">
@@ -754,7 +792,7 @@ Codex 또는 Claude에게 "AX1 Skill Pack을 최신 안정 버전으로 업데�
 GitHub: https://github.com/RealMyeong/ax1-bizplan/releases/tag/vX.Y.Z
 GitHub 접근이 없으면 공유 드라이브의 ax1-bizplan-vX.Y.Z.zip을 사용하세요.
 
-오류·개선 요청: 에이전트에게 익명 재현부터 수정·검증·PR 생성까지 요청하세요.
+오류·개선 요청: 에이전트가 Discussion·Issue·Fork 기반 PR 중 적절한 창구를 선택하고 이유를 설명하게 하세요.
 안내: https://github.com/RealMyeong/ax1-bizplan/blob/main/CONTRIBUTING.md</code></pre>
           </div>
         </article>
@@ -764,7 +802,7 @@ GitHub 접근이 없으면 공유 드라이브의 ax1-bizplan-vX.Y.Z.zip을 사�
         <strong>릴리스 완료 후:</strong> 관련 PR에 통합 커밋, 반영 버전, Release 링크, 검증 결과와 알려진 제한을 기록합니다.
       </div>
       <div class="callout">
-        <strong>GitHub 계정이 없는 팀원:</strong> Release의 전체 ZIP과 <code>SHA256SUMS.txt</code>를 공유 Drive 배포 폴더에 그대로 올립니다. 문제 버전은 덮어쓰지 않고 이전 Release로 롤백한 뒤 새 패치 버전으로 수정합니다.
+        <strong>GitHub 계정이 없는 팀원:</strong> Release의 통합 ZIP과 <code>SHA256SUMS.txt</code>만 공유 Drive 배포 폴더에 그대로 올립니다. 개별 스킬 ZIP은 CI 내부 검증용이라 배포하지 않습니다. 문제 버전은 덮어쓰지 않고 이전 Release로 롤백한 뒤 새 패치 버전으로 수정합니다.
       </div>
     </section>
 

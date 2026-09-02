@@ -1,6 +1,6 @@
-# AX1 Skill Pack 개선 PR 준비 브리프
+# AX1 Skill Pack 개선 제안 준비 브리프
 
-GitHub Pull Request가 공식 개선 접수 채널이다. 이 브리프를 에이전트에게 제공하면 익명 재현, 수정, 검증과 PR 작성에 사용할 수 있다. 실제 사업자료와 제한 Drive 내부 경로는 공개 PR에 기록하지 않는다.
+이 브리프를 에이전트에게 제공하면 제안 성숙도에 맞춰 Discussion·Issue·PR 중 적절한 창구를 선택하고, 필요하면 익명 재현·수정·검증과 Fork 기반 PR 작성까지 진행할 수 있다. 실제 사업자료와 제한 Drive 내부 경로는 공개 글에 기록하지 않는다.
 
 ## 기본정보
 
@@ -9,6 +9,8 @@ GitHub Pull Request가 공식 개선 접수 채널이다. 이 브리프를 에�
 - HWPX 사용 시 core / automation / plugin 버전:
 - 입력 형식: HWP / HWPX / DOCX / PPTX / 기타
 - 자료 공개 범위: 공개 가능 / 익명화 필요 / 제한 근거 별도 확인 필요
+- 현재 단계: 아이디어 / 정의된 문제·요구사항 / 구현·검증 완료
+- 희망 결과: 방향 협의 / 구현 추적 / 병합 검토
 
 ## 재현과 기대 결과
 
@@ -37,9 +39,10 @@ GitHub Pull Request가 공식 개선 접수 채널이다. 이 브리프를 에�
 ## 에이전트 요청문
 
 ```text
-AX1 Skill Pack 저장소를 최신 main으로 준비하고 AGENTS.md, CONTRIBUTING.md와 docs/pr-operating-policy.md를 먼저 읽어줘.
-이 브리프를 민감정보 없는 예시로 재현한 뒤 한 가지 목적의 contrib 브랜치에서 수정해줘.
-.changes 변경 조각과 관련 테스트를 추가하고 전체 빌드를 실행해줘.
+AGENTS.md, CONTRIBUTING.md와 docs/pr-operating-policy.md를 먼저 읽고 이 브리프의 성숙도를 판단해줘.
+Discussion, Issue, PR 중 적절한 창구와 선택 이유를 먼저 설명하고 민감정보 없는 내용만 등록해줘.
+아이디어 단계면 관리자와 협의할 질문을 남기고 구현하지 마.
+구현이 결정된 경우에만 원본 저장소를 내 GitHub 계정으로 Fork한 구조에서 최신 upstream/main 기준 contrib 브랜치를 만들어 수정해줘.
+.changes와 관련 테스트를 추가하고 전체 빌드를 실행한 뒤 내 Fork에 커밋·Push하고 원본 저장소로 PR을 생성해줘.
 VERSION, 릴리즈용 CHANGELOG, 플러그인 버전과 태그는 수정하지 마.
-검증 후 커밋·푸시하고 PR을 생성한 다음 PR 링크와 미검증 항목을 알려줘.
 ```

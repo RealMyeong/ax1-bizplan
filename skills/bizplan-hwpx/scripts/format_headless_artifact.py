@@ -2,7 +2,8 @@
 
 일반 문서를 임의로 고치는 공개 편집기가 아니다. 승인 템플릿에서 생성된 임시
 산출물에만 build_headless_artifact.py가 내부적으로 호출한다. 표지~목차 제목은
-건드리지 않고, 본문과 본문 표에만 160% 규칙을 적용한다.
+건드리지 않고, 본문과 본문 표에만 160% 규칙을 적용한다. 생성기가 부여한 제목
+윗간격과 목록 hanging indent 및 가로 lineseg 위치는 그대로 보존한다.
 """
 
 from __future__ import annotations
@@ -204,7 +205,7 @@ def rebalance_columns(tbl: str, char_prs: dict, regular: H.Font, boldfont: H.Fon
 
 
 def fix_linesegs(xml: str, percent: int) -> str:
-    """줄 배치 캐시의 줄간격을 문단 줄간격에 맞춘다."""
+    """줄 배치 캐시의 세로 줄간격만 맞추고 가로 hanging indent는 보존한다."""
     factor = (percent - 100) / 100
 
     def fix(m):

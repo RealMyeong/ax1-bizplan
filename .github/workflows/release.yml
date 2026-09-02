@@ -74,7 +74,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: >-
           gh release create "$GITHUB_REF_NAME"
-          dist/*.zip dist/skills/*.zip dist/SHA256SUMS.txt
+          dist/*.zip dist/SHA256SUMS.txt
           --verify-tag
           --title "AX1 Skill Pack $GITHUB_REF_NAME"
           --notes-file dist/RELEASE_NOTES.md

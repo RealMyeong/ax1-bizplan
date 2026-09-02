@@ -11,9 +11,9 @@ AX1 팀의 사업계획서와 보고·제안 발표자료 등 반복 산출물 �
 | 전체 안내 | [HTML 안내문](docs/ax1-bizplan-guide.html) |
 | 팀원 | [설치·활용·업데이트 안내](docs/team-guide.md) |
 | 배포자 | [개선 접수·개발·릴리스 운영 안내](docs/maintainer-guide.md) |
-| 기여자·PR | [기여 안내](CONTRIBUTING.md) · [PR 운영 원칙](docs/pr-operating-policy.md) |
+| 기여자·제안 | [기여 안내](CONTRIBUTING.md) · [제안·PR 운영 원칙](docs/pr-operating-policy.md) |
 | 발표자료 upstream 검토 | [codex-ppt-skill 검토와 AX1 적용 결정](docs/upstream-codex-ppt-assessment.md) |
-| 개선 요청 | [기여 안내](CONTRIBUTING.md) · [PR 운영 원칙](docs/pr-operating-policy.md) · [열린 PR](https://github.com/RealMyeong/ax1-bizplan/pulls) |
+| 개선 요청 | [Discussions](https://github.com/RealMyeong/ax1-bizplan/discussions) · [Issues](https://github.com/RealMyeong/ax1-bizplan/issues) · [Pull Requests](https://github.com/RealMyeong/ax1-bizplan/pulls) |
 | 배포 파일 | [GitHub Releases](https://github.com/RealMyeong/ax1-bizplan/releases) |
 
 GitHub 접근 권한이 없는 팀원에게는 배포자가 최신 Release ZIP과 `SHA256SUMS.txt`를 공유 드라이브로 전달합니다. 팀원은 설치 경로를 직접 다루기보다 Codex 또는 Claude에게 설치·백업·검증을 요청하는 방식을 기본으로 합니다.
@@ -80,19 +80,20 @@ docs/            팀 운영 양식
 ## 운영 흐름
 
 ```text
-팀 사용 → 에이전트와 익명 재현·로컬 개선 → 브랜치·검증 → PR
+아이디어·문제 → 에이전트가 Discussion·Issue·PR 선택
+       → 방향 협의·구현 결정 → Fork·Clone → 브랜치·검증 → 원본 저장소 PR
        → 일요일 배포자 취합·통합·검증 → 월요일 버전·태그·GitHub Release
        → 팀원별 반영 내용 안내와 사용자 업데이트
 ```
 
 - `main`에는 팀에서 사용할 수 있는 안정 상태만 유지합니다.
 - 변경은 짧은 작업 브랜치에서 검토한 뒤 `main`에 합칩니다.
-- 팀원과 팀원 에이전트는 [기여 안내](CONTRIBUTING.md)와 [PR 운영 원칙](docs/pr-operating-policy.md)을 따릅니다. 기여 PR은 `.changes/`에 변경 조각을 추가하고 버전·태그·릴리즈 파일은 수정하지 않습니다.
+- 팀원과 팀원 에이전트는 [기여 안내](CONTRIBUTING.md)와 [제안·PR 운영 원칙](docs/pr-operating-policy.md)을 따릅니다. 아이디어는 Discussion, 정의된 문제는 Issue, 구현·검증된 변경은 Fork 기반 PR을 선택하며, 기여 PR은 `.changes/`에 변경 조각을 추가하고 버전·태그·릴리즈 파일은 수정하지 않습니다.
 - 저장소 버전은 루트 `VERSION`과 `.codex-plugin/plugin.json`에 동일하게 기록합니다.
 - 개별 스킬 버전은 각 `SKILL.md`의 `metadata.version`으로 별도 관리합니다.
 - 릴리스 태그는 `vX.Y.Z` 형식으로 생성합니다.
 - v0.7.0 이후 변경사항은 먼저 `CHANGELOG.md`의 `Unreleased`에 누적하며, 커밋이나 개선 요청마다 태그를 만들지 않습니다.
-- 개선 PR은 수시로 접수하고 일요일 취합·검증해 월요일 새 안정 Release로 배포합니다. 릴리즈 노트에는 PR 번호와 팀원별 실제 반영 내용·제외 범위·검증 상태를 기록하며, 검증 완료 변경이 없는 주에는 빈 태그를 만들지 않습니다.
+- 개선 Discussion·Issue·PR은 수시로 접수하고 일요일 구현 결정과 PR을 취합·검증해 월요일 새 안정 Release로 배포합니다. 릴리즈 노트에는 PR 번호와 팀원별 실제 반영 내용·제외 범위·검증 상태를 기록하며, 검증 완료 변경이 없는 주에는 빈 태그를 만들지 않습니다.
 - 기존 스킬의 호환 가능한 질문·출력·템플릿·안전·검증 개선은 패치를 기본으로 하고, 새 스킬·새 필수 의존성·팀 사용법의 실질적 전환일 때만 관리자가 마이너를 승인합니다.
 - `VERSION`, 플러그인·개별 스킬 버전과 태그는 배포 묶음이 확정될 때 한 번에 올립니다. 현재 안정 버전은 `v0.9.0`이며 다음 호환 개선 묶음은 기본적으로 패치 후보로 둡니다.
 
@@ -112,7 +113,7 @@ docs/            팀 운영 양식
 python scripts/build_release.py
 ```
 
-검증이 통과하면 `dist/`에 전체 플러그인 ZIP, 개별 스킬 ZIP, SHA-256 체크섬과 `CHANGELOG.md` 기반 `RELEASE_NOTES.md`가 생성됩니다. `v*` 태그를 GitHub에 올리면 GitHub Actions가 같은 검증을 수행하고 주요 변경사항이 포함된 Release를 생성합니다.
+검증이 통과하면 `dist/`에 공개용 통합 ZIP, 통합 ZIP 전용 SHA-256 체크섬, `CHANGELOG.md` 기반 `RELEASE_NOTES.md`와 CI 내부 격리 검사용 개별 스킬 ZIP이 생성됩니다. `v*` 태그를 GitHub에 올리면 GitHub Actions가 같은 검증을 수행하고 통합 ZIP과 `SHA256SUMS.txt`만 Release 자산으로 공개합니다.
 
 ## 팀원 업데이트 요청 예시
 
@@ -134,7 +135,7 @@ Claude에서는 같은 저장소의 `skills/`를 `~/.claude/skills/`에 설치�
 - 개인정보, 계정정보, API 키와 인증서
 - 작업 중간파일과 자동 생성된 DOCX·HWP·HWPX·PDF. 단, 매니페스트 SHA-256과 익명화 검사를 통과한 `bizplan-hwpx` 승인 템플릿 한 개는 예외
 
-새 사례에서 얻은 내용은 원문을 올리는 대신 `docs/feedback-intake-template.md`의 PR 준비 브리프로 익명화하고, 재사용 가능한 규칙·테스트만 브랜치와 PR에 반영합니다.
+새 사례에서 얻은 내용은 원문을 올리는 대신 `docs/feedback-intake-template.md`의 개선 제안 브리프로 익명화합니다. 에이전트가 성숙도에 따라 Discussion·Issue·PR을 선택하고, 재사용 가능한 규칙·테스트만 Fork의 브랜치와 PR에 반영합니다.
 
 ## 참고
 

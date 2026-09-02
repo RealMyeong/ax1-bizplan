@@ -6,8 +6,8 @@
 
 - GitHub는 재사용 가능한 스킬, 익명화된 규칙, 테스트와 버전만 관리합니다.
 - 실제 공고문, RFP, 사업계획서, 평가의견 원본과 개인정보는 제한된 Google Drive에서 관리합니다.
-- GitHub Pull Request를 공식 개선 접수·검토 채널로 사용합니다. 팀원은 문제 설명부터 익명 재현·수정·검증·PR 생성까지 에이전트에 맡길 수 있습니다.
-- Issue는 선행 필수 단계가 아닙니다. 바로 수정하기 어려운 장기 논의나 여러 PR을 묶는 추적이 필요할 때만 선택적으로 사용합니다.
+- GitHub Discussion·Issue·Pull Request를 제안 성숙도에 맞춰 사용합니다. 팀원은 채널 선택부터 익명화·Fork·수정·검증·PR 생성까지 에이전트에 맡길 수 있습니다.
+- Discussion은 방향이 열린 아이디어, Issue는 정의됐지만 아직 구현하지 않은 문제·요구사항, PR은 구현·검증이 준비된 변경에 사용합니다. Discussions가 비활성화됐으면 `논의 필요` Issue로 대체합니다.
 - `main`에는 팀이 바로 설치해도 되는 안정 버전만 둡니다.
 - 사업계획서는 제출기관의 공식 양식을 보존해 upstream 경로로 반영하고, 일반 HWPX 산출물은 매니페스트 SHA-256으로 승인된 AX1 산출물 템플릿과 표준 라이브러리 경량 모드를 기본으로 사용합니다. 계약·고객 필수 양식도 upstream 경로를 사용합니다.
 - 팀원이 직접 스킬을 개선한 경우 [기여 안내](../CONTRIBUTING.md)와 [PR 운영 원칙](pr-operating-policy.md)에 따라 기능 제안 PR을 받을 수 있습니다. 버전과 릴리즈는 배포자만 결정합니다.
@@ -18,6 +18,8 @@
 | 용도 | 링크 |
 |---|---|
 | 개선 PR | <https://github.com/RealMyeong/ax1-bizplan/pulls> |
+| 아이디어 Discussion | <https://github.com/RealMyeong/ax1-bizplan/discussions> |
+| 문제·요구사항 Issue | <https://github.com/RealMyeong/ax1-bizplan/issues> |
 | PR 준비 브리프 | [docs/feedback-intake-template.md](feedback-intake-template.md) |
 | GitHub 저장소 | <https://github.com/RealMyeong/ax1-bizplan> |
 | GitHub Releases | <https://github.com/RealMyeong/ax1-bizplan/releases> |
@@ -25,16 +27,28 @@
 
 ## 권장 운영 주기
 
-- 개선 PR: 상시 접수
-- 일요일: 해당 주 PR 취합·추가정보 요청·안전한 기능 선별 통합·전체 검증
+- 개선 Discussion·Issue·PR: 상시 접수
+- 일요일: 해당 주 Discussion·Issue의 구현 결정과 PR 취합·추가정보 요청·안전한 기능 선별 통합·전체 검증
 - 월요일: 검증 통과 묶음의 새 안정 Release 배포와 팀 업데이트 안내
 - 업무 중단 수준 오류: 검증 후 패치 버전으로 즉시 배포
 
 PR이 들어올 때마다 바로 배포하지 않고 일요일 통합·월요일 배포 리듬을 유지합니다. 검증 완료 변경이 없으면 빈 태그를 만들지 않고 현재 안정 Release를 유지하며, 실패·보류 항목은 이유와 다음 조치를 PR에 기록해 다음 주기로 넘깁니다.
 
-## 1. 개선 PR 분류
+## 1. 개선 제안 분류
 
-GitHub PR의 리뷰 상태와 라벨로 처리상태를 관리합니다.
+에이전트와 팀원이 Discussion·Issue·PR 중 적절한 채널을 선택하고, 관리자는 구현 결정 전후 상태를 연결합니다.
+
+| 입력 상태 | 접수 채널 | 관리자 조치 |
+|---|---|---|
+| 목표·범위·대안이 열려 있음 | Discussion | 선택지와 결정 질문을 정리하고 방향 합의 |
+| 문제·요구사항·완료조건이 정의됨 | Issue | 우선순위·담당·구현 여부를 결정하고 추적 |
+| 수정·테스트·변경 조각이 준비됨 | Pull Request | 최신 `main` 기준 통합 가능성 검토 |
+
+```text
+아이디어 제안 → Discussion 또는 Issue → 방향 협의 → 구현 결정 → Fork 작업 → PR
+```
+
+GitHub PR의 리뷰 상태와 라벨은 다음처럼 관리합니다.
 
 | 상태 | 의미 |
 |---|---|
@@ -46,13 +60,13 @@ GitHub PR의 리뷰 상태와 라벨로 처리상태를 관리합니다.
 | 릴리스 반영 | 배포 버전과 Release 링크까지 기록함 |
 | 보류·종료 | 단일 사례, 근거 부족 또는 중복으로 병합하지 않음 |
 
-각 PR에는 담당자, 관련 PR·Issue, 통합 커밋과 반영 버전을 기록합니다.
+각 PR에는 담당자, 관련 Discussion·Issue, 통합 커밋과 반영 버전을 기록합니다.
 
 월요일 릴리즈의 `CHANGELOG`와 릴리즈 노트에는 팀원별로 PR 번호, 기여자가 선택한 표시명 또는 GitHub 계정, 실제 반영 내용, 제외·보류 범위와 검증 상태를 기록합니다. 이메일·전화번호 같은 개인정보는 기여 표시에 사용하지 않습니다.
 
 ## 2. 민감정보와 근거 처리
 
-다음 내용은 GitHub Issue, 커밋 메시지와 스킬 예시에 넣지 않습니다.
+다음 내용은 GitHub Discussion·Issue, 커밋 메시지와 스킬 예시에 넣지 않습니다.
 
 - 실제 기관명, 고객명과 담당자 개인정보
 - 미공개 사업계획서와 평가의견 원문
@@ -167,9 +181,9 @@ python scripts/build_release.py
 
 검증이 통과하면 다음을 확인합니다.
 
-- `dist/ax1-bizplan-v버전.zip`
-- `dist/skills/`의 개별 스킬 ZIP
-- `dist/SHA256SUMS.txt`
+- 공개용 통합 ZIP `dist/ax1-bizplan-v버전.zip`
+- 공개용 `dist/SHA256SUMS.txt`가 통합 ZIP 한 개만 가리키는지
+- `dist/skills/`의 개별 스킬 ZIP은 CI 내부 격리 검증에만 사용되고 Release 업로드 대상이 아닌지
 - `dist/RELEASE_NOTES.md`의 주요 변경사항·설치 파일·포함 스킬 버전
 - 실제 RFP, 계획서, 평가의견, 산출물이 ZIP에 포함되지 않았는지
 - 변경된 스킬의 대표 요청문과 경계 사례가 기대대로 동작하는지
@@ -184,11 +198,12 @@ python scripts/build_release.py
 - `bizplan-draft` 변경이면 전체 초안 요청이 첫 회차 질문 후 멈추는지, 부분 답변 뒤 설계 보드와 다음 질문을 갱신하는지, 명시적 즉시 작성만 가정 기반으로 진행하는지
 - HWPX 변경이면 `mcp_server_health()`의 코어·자동화·플러그인 버전과 도구 표면이 기준 조합과 일치하는지
 - HWPX 원본 SHA-256이 유지되고 dry-run·semantic diff·open-safety·readback이 통과하는지
-- 경량 HWPX 변경이면 `headless_hwpx_acceptance_test.py`가 Windows·CI에서 외부 패키지와 GUI 없이 통과하는지, 승인 템플릿이 전체·개별 스킬 ZIP에 포함되는지
+- 경량 HWPX 변경이면 `headless_hwpx_acceptance_test.py`가 Windows·CI에서 외부 패키지와 GUI 없이 통과하는지, 승인 템플릿이 공개 통합 ZIP과 CI 내부 개별 스킬 ZIP에 포함되는지
 - 경량 생성 결과에서 본문과 모든 표 셀 줄간격이 160%인지, `☐`·`☑` 같은 의미 기호가 바뀌지 않는지, 다중 섹션·임의 템플릿이 결과 없이 거부되는지
-- 경량 생성 결과의 제목이 최대 4단계이고 앞 공백이 수준 1·2·3·4·본문 목록 순서로 0·3·5·7·9개인지, 5단계 제목이 본문 목록으로 전환되는지
+- 경량 생성 결과의 제목이 최대 4단계이고 제목 앞 공백이 수준 1·2·3·4 순서로 0·3·5·7개인지, 5단계 제목이 앞 공백 없는 본문 목록으로 전환되는지
+- 본문 목록의 왼쪽 4000·첫 줄 -800 HWPUNIT hanging indent와 후속 `lineseg` 정렬, 본문·목록·표 뒤 수준 2~4 제목의 600 HWPUNIT 윗간격, 연속 제목·수준 1 새 쪽의 0 간격 예외를 검사하는지
 - 승인 AX1 경량 생성의 DXS 파일명 세그먼트와 개정 이력 최신 날짜·버전이 일치하고, 미승인 문서유형·잘못된 날짜·상태어·부분·중복·역순·포화 개정행, 복수 버전 토큰과 기존 출력 경로를 결과 없이 거부하는지
-- 사업계획서 공식 양식이 AX1 일반 산출물 템플릿으로 대체되지 않고, 일반 산출물 개별 ZIP이 저장소 링크 없이 승인 템플릿으로 생성되는지
+- 사업계획서 공식 양식이 AX1 일반 산출물 템플릿으로 대체되지 않고, CI 내부 일반 산출물 개별 ZIP 격리 환경이 저장소 링크 없이 승인 템플릿으로 생성되는지
 - `AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md`, PR 양식과 `validate_pr.py`가 배포자 전용 버전 변경과 개인정보·실문서 반입을 막는지
 - Windows 한컴에서 모든 페이지를 열어 확인하고 화면 증거를 남겼는지
 
@@ -256,6 +271,8 @@ GitHub Release에서 다음 두 파일을 받아 공유 드라이브의 배포 �
 - `ax1-bizplan-vX.Y.Z.zip`
 - `SHA256SUMS.txt`
 
+개별 스킬 ZIP은 GitHub Release에 게시하거나 공유 Drive로 배포하지 않습니다. 팀원은 통합 ZIP의 8개 스킬을 함께 설치하고, 개별 ZIP은 CI 내부 격리 검증 결과로만 사용합니다.
+
 배포 폴더에는 최신 버전만 `latest`로 표시하고, 이전 버전은 `archive`에 보관합니다. ZIP 파일을 다시 압축하거나 이름만 바꾸지 않습니다. 체크섬 검증이 달라질 수 있습니다.
 
 팀 공지에는 다음 내용을 포함합니다.
@@ -265,7 +282,7 @@ GitHub Release에서 다음 두 파일을 받아 공유 드라이브의 배포 �
 - 업데이트가 필요한 사람
 - Codex·Claude 업데이트 요청문
 - Release ZIP 또는 GitHub Release 링크
-- 기여 안내와 에이전트 기반 개선 PR 요청문
+- 기여 안내와 에이전트 기반 Discussion·Issue·Fork PR 요청문
 - 문제 발생 시 이전 버전으로 되돌리는 방법
 - HWPX 기능이 바뀌었으면 검증된 upstream 버전 조합과 앱 재시작 필요 여부
 
@@ -287,7 +304,7 @@ Codex 또는 Claude에게 "AX1 Skill Pack을 최신 안정 버전으로 업데�
 GitHub: https://github.com/RealMyeong/ax1-bizplan/releases/tag/vX.Y.Z
 GitHub 접근이 없으면 공유 드라이브의 ax1-bizplan-vX.Y.Z.zip을 사용하세요.
 
-오류·개선 요청: 에이전트에게 익명 재현부터 수정·검증·PR 생성까지 요청하세요.
+오류·개선 요청: 에이전트가 Discussion·Issue·Fork 기반 PR 중 적절한 창구를 선택하고 이유를 설명하게 하세요.
 안내: https://github.com/RealMyeong/ax1-bizplan/blob/main/CONTRIBUTING.md
 ```
 

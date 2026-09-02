@@ -33,7 +33,6 @@ import check_headless_artifact as C  # noqa: E402
 HEADING_HEIGHT = {1: 1500, 2: 1200, 3: 1050, 4: 1050}
 HEADING_STYLE = {1: "개요 1", 2: "개요 2", 3: "개요 3", 4: "개요 4"}
 OUTLINE_PREFIX_SPACES = {1: 0, 2: 3, 3: 5, 4: 7}
-BODY_LIST_PREFIX_SPACES = 9
 TABLE_OUT_MARGIN = 283
 CELL_MARGIN = (510, 510, 141, 141)  # left right top bottom
 MIN_COL_WIDTH = 3000
@@ -211,11 +210,30 @@ class StylePool:
         self.new_chars.append(block)
         return new_id
 
-    def para_indent(self, left: int) -> str:
+    def para_format(self, left: int = 0, intent: int = 0, prev: int = 0) -> str:
+        """Return a paragraph style with canonical HwpUnitChar margin values.
+
+        The approved template stores the fallback margin branch at twice the
+        HwpUnitChar values, so both branches must be changed together.
+        """
         block = self.paras[self.base_para]
-        block = re.sub(r'(<hc:left value=")-?\d+(")', lambda m: m.group(1) + str(left) + m.group(2), block)
-        if left == 0:
-            block = re.sub(r'(<hc:intent value=")-?\d+(")', r'\g<1>0\2', block)
+        margin_index = 0
+
+        def replace_margin(match):
+            nonlocal margin_index
+            scale = 1 if margin_index == 0 else 2
+            margin_index += 1
+            margin = match.group(0)
+            for name, value in (("left", left), ("intent", intent), ("prev", prev)):
+                margin = re.sub(
+                    rf'(<hc:{name} value=")-?\d+(")',
+                    lambda m, v=value * scale: m.group(1) + str(v) + m.group(2),
+                    margin,
+                    count=1,
+                )
+            return margin
+
+        block = re.sub(r'<hh:margin>.*?</hh:margin>', replace_margin, block, flags=re.S)
         want = self._strip(block, "paraPr")
         for pid, existing in self.paras.items():
             if self._strip(existing, "paraPr") == want:
@@ -225,6 +243,9 @@ class StylePool:
         self.paras[new_id] = block
         self.new_paras.append(block)
         return new_id
+
+    def para_indent(self, left: int) -> str:
+        return self.para_format(left=left)
 
     def finish(self) -> str:
         header = self.header
@@ -258,37 +279,57 @@ class Emitter:
         self.next_id += 1
         return self.next_id
 
-    def _linesegs(self, text: str, height: int, bold: bool, horzsize: int) -> str:
+    def _linesegs(
+        self,
+        text: str,
+        height: int,
+        bold: bool,
+        horzsize: int,
+        first_horzpos: int = 0,
+        following_horzpos: int | None = None,
+    ) -> str:
         """실제로 접히는 줄 수만큼 lineseg 를 만든다.
 
         한 개만 넣으면 여러 줄이 같은 자리에 겹쳐 그려진다.
         """
         spacing = round(height * (H.BODY_LINE_SPACING - 100) / 100)
         line_h = height + spacing
-        starts = H.wrap_lines(text, height, bold, self.regular, self.boldfont, horzsize)
+        following_horzpos = first_horzpos if following_horzpos is None else following_horzpos
+        starts = H.wrap_lines(
+            text,
+            height,
+            bold,
+            self.regular,
+            self.boldfont,
+            horzsize - first_horzpos,
+            following_avail=horzsize - following_horzpos,
+        )
         segs = "".join(
             f'<hp:lineseg textpos="{pos}" vertpos="{i * line_h}" vertsize="{height}"'
             f' textheight="{height}" baseline="{round(height * 0.85)}" spacing="{spacing}"'
-            f' horzpos="0" horzsize="{horzsize}" flags="393216"/>'
+            f' horzpos="{first_horzpos if i == 0 else following_horzpos}"'
+            f' horzsize="{horzsize - (first_horzpos if i == 0 else following_horzpos)}" flags="393216"/>'
             for i, pos in enumerate(starts)
         )
         return f"<hp:linesegarray>{segs}</hp:linesegarray>"
 
     def para(self, text: str, para_id: str, char_id: str, height: int, horzsize=None,
-             page_break=False, bold=False, style="0") -> str:
+             page_break=False, bold=False, style="0", first_horzpos=0,
+             following_horzpos=None) -> str:
         run = f"<hp:run charPrIDRef=\"{char_id}\">{'<hp:t>' + esc(text) + '</hp:t>' if text else ''}</hp:run>"
         width = horzsize if horzsize is not None else self.text_width
         return (
             f'<hp:p id="{self._id()}" paraPrIDRef="{para_id}" styleIDRef="{style}"'
             f' pageBreak="{1 if page_break else 0}" columnBreak="0" merged="0">'
-            f"{run}{self._linesegs(text, height, bold, width)}</hp:p>"
+            f"{run}{self._linesegs(text, height, bold, width, first_horzpos, following_horzpos)}</hp:p>"
         )
 
-    def heading(self, level: int, text: str) -> str:
+    def heading(self, level: int, text: str, add_top_spacing: bool = False) -> str:
         height = HEADING_HEIGHT[level]
         text = " " * OUTLINE_PREFIX_SPACES[level] + text.lstrip()
+        prev = H.HEADING_TOP_SPACING if level in {2, 3, 4} and add_top_spacing else 0
         return self.para(
-            text, self.pool.para_indent(0), self.pool.char(height, True), height,
+            text, self.pool.para_format(prev=prev), self.pool.char(height, True), height,
             page_break=(level == 1), bold=True,
             style=self.styles[HEADING_STYLE[level]],
         )
@@ -297,14 +338,19 @@ class Emitter:
         return self.para(text, self.pool.base_para, self.pool.char(H.BODY_TEXT_HEIGHT, False), H.BODY_TEXT_HEIGHT)
 
     def item(self, level: int, text: str) -> str:
-        del level  # 경량 기본 목록은 한 단계이며 실제 U+0020 공백 9개로 들여쓴다.
-        text = " " * BODY_LIST_PREFIX_SPACES + "• " + text.lstrip()
+        del level  # 경량 기본 목록은 한 단계이며 문단 hanging indent로 정렬한다.
+        text = "• " + text.lstrip()
         return self.para(
             text,
-            self.pool.para_indent(0),
+            self.pool.para_format(
+                left=H.BODY_LIST_LEFT_INDENT,
+                intent=H.BODY_LIST_FIRST_LINE_INDENT,
+            ),
             self.pool.char(H.BODY_TEXT_HEIGHT, False),
             H.BODY_TEXT_HEIGHT,
             horzsize=self.text_width,
+            first_horzpos=H.BODY_LIST_BULLET_POSITION,
+            following_horzpos=H.BODY_LIST_LEFT_INDENT,
         )
 
     def table(self, rows: list, regular: H.Font, boldfont: H.Font) -> str:
@@ -642,15 +688,24 @@ def build(
             parts.append(emitter.body(name))
         log.append(f"목차 항목 {len(chapters)}개 생성")
 
+    previous_kind = None
     for block in blocks:
         if block[0] == "h":
-            parts.append(emitter.heading(block[1], block[2]))
+            add_top_spacing = block[1] in {2, 3, 4} and previous_kind in {"p", "li", "table"}
+            parts.append(emitter.heading(block[1], block[2], add_top_spacing))
         elif block[0] == "p":
             parts.append(emitter.body(block[1]))
         elif block[0] == "li":
             parts.append(emitter.item(block[1], block[2]))
         elif block[0] == "table":
             parts.append(emitter.table(block[1], regular, boldfont))
+        previous_kind = block[0]
+    log.append(f"본문·목록·표 뒤 수준 2~4 제목 윗간격 {H.HEADING_TOP_SPACING} HWPUNIT 적용")
+    log.append(
+        "본문 목록 hanging indent 적용: "
+        f"왼쪽 {H.BODY_LIST_LEFT_INDENT}, 첫 줄 {H.BODY_LIST_FIRST_LINE_INDENT}, "
+        f"글머리표 위치 {H.BODY_LIST_BULLET_POSITION} HWPUNIT"
+    )
 
     section = fill_cover(section, header, cover, log)
     section = record_initial_revision(

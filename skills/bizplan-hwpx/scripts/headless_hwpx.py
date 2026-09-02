@@ -29,6 +29,13 @@ HEADER_FILL = "#D9D9D9"
 BODY_LINE_SPACING = 160
 CELL_LINE_SPACING = 160  # 표 셀도 본문과 같은 160%
 BODY_TEXT_HEIGHT = 1000  # 10pt. HWPUNIT = pt * 100
+# 수준 2~4 제목은 본문·목록·표 뒤에서만 6pt 윗간격을 사용한다.
+HEADING_TOP_SPACING = 600
+# 목록은 텍스트 앞 공백 대신 문단 왼쪽 들여쓰기와 첫 줄 내어쓰기를 사용한다.
+# 10pt 맑은 고딕의 "• " 폭(약 769 HWPUNIT)에 맞춘 안정적인 반올림 값이다.
+BODY_LIST_LEFT_INDENT = 4000
+BODY_LIST_FIRST_LINE_INDENT = -800
+BODY_LIST_BULLET_POSITION = BODY_LIST_LEFT_INDENT + BODY_LIST_FIRST_LINE_INDENT
 # 줄바꿈 계산 여유. 한/글의 줄나눔을 정확히 재현할 수 없으므로 조금 좁게 잡아
 # 줄 수를 적게 세지 않도록 한다. 적게 세면 그만큼 글자가 겹친다.
 WRAP_SAFETY = 0.97
@@ -596,7 +603,7 @@ def parse_char_prs(header: str) -> dict:
 
 
 def parse_para_prs(header: str) -> dict:
-    """paraPr id -> 줄간격·정렬·왼쪽/첫 줄 들여쓰기."""
+    """paraPr id -> 줄간격·정렬·여백·왼쪽/첫 줄 들여쓰기."""
     out = {}
     for m in re.finditer(r'<hh:paraPr id="(\d+)"[^>]*>(.*?)</hh:paraPr>', header, re.S):
         body = m.group(2)
@@ -604,11 +611,15 @@ def parse_para_prs(header: str) -> dict:
         al = re.search(r'<hh:align horizontal="(\w+)"', body)
         left = re.search(r'<hc:left value="(-?\d+)"', body)
         intent = re.search(r'<hc:intent value="(-?\d+)"', body)
+        prev = re.search(r'<hc:prev value="(-?\d+)"', body)
+        next_ = re.search(r'<hc:next value="(-?\d+)"', body)
         out[m.group(1)] = {
             "spacing": int(ls.group(1)) if ls else None,
             "align": al.group(1) if al else None,
             "left": int(left.group(1)) if left else None,
             "intent": int(intent.group(1)) if intent else None,
+            "prev": int(prev.group(1)) if prev else None,
+            "next": int(next_.group(1)) if next_ else None,
         }
     return out
 
@@ -1028,7 +1039,17 @@ def is_label_column_table(table_xml: str, fill_ids: set) -> bool:
     return first_row[0].fill in fill_ids and all(c.fill not in fill_ids for c in first_row[1:])
 
 
-def wrap_lines(text: str, height: int, bold: bool, regular: Font, boldfont: Font, avail: int, ratio=1.0, spacing=0.0):
+def wrap_lines(
+    text: str,
+    height: int,
+    bold: bool,
+    regular: Font,
+    boldfont: Font,
+    avail: int,
+    ratio=1.0,
+    spacing=0.0,
+    following_avail: int | None = None,
+):
     """줄바꿈 지점을 계산해 각 줄의 시작 글자 위치 목록을 돌려준다.
 
     줄 배치 캐시(hp:lineseg)는 **실제로 그려지는 줄마다 하나씩** 있어야 한다.
@@ -1041,7 +1062,8 @@ def wrap_lines(text: str, height: int, bold: bool, regular: Font, boldfont: Font
     # 한/글은 한글도 어절(공백) 단위로 끊는다. 글자 단위로 계산하면 줄 수를 적게 잡아
     # 캐시가 모자라고, 모자란 만큼 여러 줄이 한 자리에 겹쳐 그려진다.
     # 계산이 한/글과 정확히 같을 수는 없으므로 여유를 두어 **적게 잡지 않도록** 한다.
-    avail = avail * WRAP_SAFETY
+    first_limit = avail * WRAP_SAFETY
+    following_limit = (following_avail if following_avail is not None else avail) * WRAP_SAFETY
     font = boldfont if bold else regular
     starts, width, last_space = [0], 0.0, -1
     i = 0
@@ -1053,7 +1075,8 @@ def wrap_lines(text: str, height: int, bold: bool, regular: Font, boldfont: Font
         w = adv * height * ratio + height * spacing
         if ch == " ":
             last_space = i
-        if width + w > avail and i > starts[-1]:
+        limit = first_limit if len(starts) == 1 else following_limit
+        if width + w > limit and i > starts[-1]:
             if last_space > starts[-1]:
                 i = last_space + 1  # 어절 단위로 되돌린다
             starts.append(i)

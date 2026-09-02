@@ -65,6 +65,26 @@ def require_issue(issues: list[dict], rule: str, contains: str) -> None:
         raise AssertionError(f"예상 위반을 찾지 못함: {rule} / {contains}: {issues!r}")
 
 
+def top_level_paragraphs(section: str) -> list[dict]:
+    """Return generated top-level paragraphs while excluding table-cell paragraphs."""
+    spans = H.table_spans(section)
+    body_start = H.body_start_offset(section)
+    result = []
+    for offset, attrs, body in H.paragraphs(section):
+        if body_start is None or offset < body_start or H.in_any_span(spans, offset):
+            continue
+        result.append(
+            {
+                "offset": offset,
+                "attrs": attrs,
+                "body": body,
+                "text": H.unescape("".join(H.re.findall(r"<hp:t>([^<]*)</hp:t>", body))),
+                "table": "<hp:tbl " in body,
+            }
+        )
+    return result
+
+
 def main() -> int:
     template = H.approved_template(SKILL)
     template_before = digest(template)
@@ -85,11 +105,20 @@ def main() -> int:
 - 표준 라이브러리만 사용
 - 한컴오피스와 COM 창을 실행하지 않음
 
+## 1.2 목록 뒤 제목
+
 | 구분 | 확인 결과 |
 |---|---|
 | 선택 상태 | ☑ 완료 / ☐ 미완료 |
 | 줄간격 | 본문 160% / 표 셀 160% |
 | 한글 표 셀 | 한글표셀검증 |
+
+## 1.3 표 뒤 제목
+### 1.3.1 연속 제목
+
+- 매우 긴 한국어 글머리표가 자동으로 두 줄 이상 줄바꿈될 때 둘째 줄 이후의 시작 위치가 첫 줄의 글머리표 다음 본문 시작 위치와 시각적으로 일치하는지 확인하기 위한 합성 검증 문장입니다. 일반 공백과 문단 들여쓰기를 함께 적용해 이중 들여쓰기가 생기면 안 됩니다.
+
+# 2. 새 쪽 제목
 """
     cover = {
         "agency": "테스트 발주기관",
@@ -109,6 +138,9 @@ def main() -> int:
         escaped_hangul = temp / "DXS-AX-TST-한글_코드표기_결함-20260902-v0.1.hwpx"
         bad_outline = temp / "DXS-AX-TST-잘못된_개요_들여쓰기-20260902-v0.1.hwpx"
         bad_outline_h4 = temp / "DXS-AX-TST-잘못된_사수준_들여쓰기-20260902-v0.1.hwpx"
+        bad_heading_gap = temp / "DXS-AX-TST-잘못된_제목위간격-20260902-v0.1.hwpx"
+        bad_list_indent = temp / "DXS-AX-TST-잘못된_목록들여쓰기-20260902-v0.1.hwpx"
+        bad_list_lineseg = temp / "DXS-AX-TST-잘못된_목록줄배치-20260902-v0.1.hwpx"
         content.write_text(markdown, encoding="utf-8")
         revision_note = "한글 개정내역: C:\\검증\\원본\\1"
         revision_author = "테스트 작성자"
@@ -191,6 +223,10 @@ def main() -> int:
             "   1.1 구현 방식": heading_styles["개요 2"],
             "     1.1.1 세부 검증": heading_styles["개요 3"],
             "       1.1.1.1 사수준 제목": heading_styles["개요 4"],
+            "   1.2 목록 뒤 제목": heading_styles["개요 2"],
+            "   1.3 표 뒤 제목": heading_styles["개요 2"],
+            "     1.3.1 연속 제목": heading_styles["개요 3"],
+            "2. 새 쪽 제목": heading_styles["개요 1"],
         }
         observed_heading_styles = set()
         for _, attrs, body in H.paragraphs(section):
@@ -202,8 +238,10 @@ def main() -> int:
                 "   1.1 구현 방식",
                 "     1.1.1 세부 검증",
                 "       1.1.1.1 사수준 제목",
-                "         • 본문 목록으로 전환할 항목",
-                "         • 표준 라이브러리만 사용",
+                "   1.2 목록 뒤 제목",
+                "   1.3 표 뒤 제목",
+                "     1.3.1 연속 제목",
+                "2. 새 쪽 제목",
             }:
                 pid = H.re.search(r'paraPrIDRef="(\d+)"', attrs)
                 if not pid or para_prs[pid.group(1)]["left"] != 0 or para_prs[pid.group(1)]["intent"] != 0:
@@ -220,13 +258,115 @@ def main() -> int:
             "   1.1 구현 방식",
             "     1.1.1 세부 검증",
             "       1.1.1.1 사수준 제목",
-            "         • 본문 목록으로 전환할 항목",
-            "         • 표준 라이브러리만 사용",
+            "   1.2 목록 뒤 제목",
+            "   1.3 표 뒤 제목",
+            "     1.3.1 연속 제목",
+            "2. 새 쪽 제목",
+            "• 본문 목록으로 전환할 항목",
+            "• 표준 라이브러리만 사용",
         ):
             if expected not in paragraph_texts:
                 raise AssertionError(f"개요 수준 앞 공백 보존 실패: {expected!r}")
         if any("1.1.1.1.1" in text for text in paragraph_texts):
             raise AssertionError("5단계 숫자 제목이 본문 목록으로 전환되지 않음")
+
+        top_level = top_level_paragraphs(section)
+        by_text = {paragraph["text"]: paragraph for paragraph in top_level if paragraph["text"]}
+        expected_spacing = {
+            "   1.1 구현 방식": H.HEADING_TOP_SPACING,
+            "   1.2 목록 뒤 제목": H.HEADING_TOP_SPACING,
+            "   1.3 표 뒤 제목": H.HEADING_TOP_SPACING,
+            "     1.3.1 연속 제목": 0,
+        }
+        for text, expected_prev in expected_spacing.items():
+            paragraph = by_text[text]
+            pid = H.re.search(r'paraPrIDRef="(\d+)"', paragraph["attrs"]).group(1)
+            if para_prs[pid]["prev"] != expected_prev:
+                raise AssertionError(
+                    f"제목 위 간격 불일치: {text!r} / {para_prs[pid]['prev']} != {expected_prev}"
+                )
+
+        new_page = by_text["2. 새 쪽 제목"]
+        new_page_pid = H.re.search(r'paraPrIDRef="(\d+)"', new_page["attrs"]).group(1)
+        if 'pageBreak="1"' not in new_page["attrs"] or para_prs[new_page_pid]["prev"] != 0:
+            raise AssertionError("수준 1 새 쪽 시작 동작 또는 위 간격이 변경됨")
+
+        list_paragraphs = [paragraph for paragraph in top_level if paragraph["text"].startswith("• ")]
+        if len(list_paragraphs) < 4:
+            raise AssertionError("합성 목록 문단을 모두 찾지 못함")
+        for paragraph in list_paragraphs:
+            pid = H.re.search(r'paraPrIDRef="(\d+)"', paragraph["attrs"]).group(1)
+            props = para_prs[pid]
+            if props["left"] != H.BODY_LIST_LEFT_INDENT or props["intent"] != H.BODY_LIST_FIRST_LINE_INDENT:
+                raise AssertionError(f"본문 목록 hanging indent 불일치: {paragraph['text'][:34]!r} / {props!r}")
+            if paragraph["text"] != paragraph["text"].lstrip(" "):
+                raise AssertionError(f"본문 목록에 앞 공백과 문단 들여쓰기가 중복됨: {paragraph['text'][:34]!r}")
+
+        long_item = next(paragraph for paragraph in list_paragraphs if "매우 긴 한국어" in paragraph["text"])
+        line_positions = [
+            (int(match.group(1)), int(match.group(2)), int(match.group(3)))
+            for match in H.re.finditer(
+                r'<hp:lineseg [^>]*textpos="(\d+)"[^>]*horzpos="(-?\d+)"[^>]*horzsize="(\d+)"',
+                long_item["body"],
+            )
+        ]
+        if len(line_positions) < 2:
+            raise AssertionError("긴 한국어 글머리표가 두 줄 이상으로 배치되지 않음")
+        if line_positions[0][1] != H.BODY_LIST_BULLET_POSITION:
+            raise AssertionError(f"글머리표 첫 줄 위치 불일치: {line_positions!r}")
+        if any(position[1] != H.BODY_LIST_LEFT_INDENT for position in line_positions[1:]):
+            raise AssertionError(f"글머리표 후속 줄이 본문 시작 위치에 맞지 않음: {line_positions!r}")
+        if "##############################" in section:
+            raise AssertionError("사용자 검토 마커가 생성 결과에 남음")
+
+        front_para_ids = set(
+            H.re.findall(r'paraPrIDRef="(\d+)"', section[: H.body_start_offset(section)])
+        )
+        generated_para_ids = {
+            H.re.search(r'paraPrIDRef="(\d+)"', paragraph["attrs"]).group(1)
+            for paragraph in list_paragraphs
+        }
+        generated_para_ids.update(
+            H.re.search(r'paraPrIDRef="(\d+)"', by_text[text]["attrs"]).group(1)
+            for text in expected_spacing
+            if expected_spacing[text]
+        )
+        if front_para_ids & generated_para_ids:
+            raise AssertionError("새 제목 간격·목록 들여쓰기 문단모양이 표지~목차에 연결됨")
+
+        gap_entries = H.read_hwpx(output)
+        gap_section = H.get_text(gap_entries, H.SECTION)
+        gap_paragraph = by_text["   1.2 목록 뒤 제목"]
+        gap_open = f'<hp:p {gap_paragraph["attrs"]}>'
+        gap_open_bad = H.re.sub(r'paraPrIDRef="\d+"', 'paraPrIDRef="0"', gap_open, count=1)
+        gap_section = gap_section.replace(gap_open, gap_open_bad, 1)
+        H.set_text(gap_entries, H.SECTION, gap_section)
+        H.write_hwpx(gap_entries, bad_heading_gap)
+        require_issue(C.check(bad_heading_gap), "제목 위 간격", "규칙")
+
+        list_entries = H.read_hwpx(output)
+        list_section = H.get_text(list_entries, H.SECTION).replace(
+            "• 표준 라이브러리만 사용",
+            "         • 표준 라이브러리만 사용",
+            1,
+        )
+        H.set_text(list_entries, H.SECTION, list_section)
+        H.write_hwpx(list_entries, bad_list_indent)
+        require_issue(C.check(bad_list_indent), "본문 목록 들여쓰기", "중복")
+
+        lineseg_entries = H.read_hwpx(output)
+        lineseg_section = H.get_text(lineseg_entries, H.SECTION)
+        bad_long_body = long_item["body"].replace(
+            f'horzpos="{H.BODY_LIST_LEFT_INDENT}"',
+            'horzpos="0"',
+            1,
+        )
+        if bad_long_body == long_item["body"]:
+            raise AssertionError("긴 목록의 후속 lineseg 변형에 실패함")
+        lineseg_section = lineseg_section.replace(long_item["body"], bad_long_body, 1)
+        H.set_text(lineseg_entries, H.SECTION, lineseg_section)
+        H.write_hwpx(lineseg_entries, bad_list_lineseg)
+        require_issue(C.check(bad_list_lineseg), "본문 목록 줄 배치", "규칙")
 
         bad_entries = H.read_hwpx(output)
         bad_section = H.get_text(bad_entries, H.SECTION).replace(

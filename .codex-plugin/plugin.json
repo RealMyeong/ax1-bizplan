@@ -1,6 +1,6 @@
 {
   "name": "ax1-bizplan",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "AX1 팀의 사업계획서 작성·HWPX 처리와 보고·제안 발표자료 제작을 공통 확인·버전·연동 정책으로 수행하는 통합 스킬팩",
   "author": {
     "name": "AX1 Team"

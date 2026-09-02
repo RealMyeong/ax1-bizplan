@@ -402,7 +402,15 @@ def validate_improvement_workflow() -> None:
         if "forms.gle" in text or "개선 요청 Form" in text:
             raise ValueError(f"{relative}: retired Form-based improvement workflow remains")
     team_guide = (ROOT / "docs" / "team-guide.md").read_text(encoding="utf-8")
-    for token in ("AGENTS.md", ".changes", "PR을 생성", "민감정보 없는 예시"):
+    for token in (
+        "AGENTS.md",
+        ".changes",
+        "PR을 생성",
+        "민감정보 없는 예시",
+        "Fork",
+        "Discussion",
+        "Issue",
+    ):
         if token not in team_guide:
             raise ValueError(f"team guide: agent-driven PR instruction missing: {token}")
     weekly_files = (
@@ -421,6 +429,21 @@ def validate_improvement_workflow() -> None:
         text = (ROOT / relative).read_text(encoding="utf-8")
         if "팀원별" not in text and "기여자" not in text:
             raise ValueError(f"{relative}: per-contributor release notes are missing")
+
+
+def validate_release_distribution() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    if "dist/skills/*.zip" in workflow:
+        raise ValueError("release workflow must not publish individual skill ZIPs")
+    for token in ("dist/*.zip dist/SHA256SUMS.txt", "--notes-file dist/RELEASE_NOTES.md"):
+        if token not in workflow:
+            raise ValueError(f"release workflow is missing the integrated-pack asset rule: {token}")
+
+    for relative in ("README.md", "docs/team-guide.md", "docs/maintainer-guide.md"):
+        text = (ROOT / relative).read_text(encoding="utf-8")
+        for token in ("통합 ZIP", "CI 내부"):
+            if token not in text:
+                raise ValueError(f"{relative}: integrated-only release guidance is missing: {token}")
 
 
 def validate_artifact_filename_policy() -> None:
@@ -475,10 +498,27 @@ def validate_contributor_policy() -> None:
     agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
     contributing = (ROOT / "CONTRIBUTING.md").read_text(encoding="utf-8")
     pr_template = (ROOT / ".github" / "PULL_REQUEST_TEMPLATE.md").read_text(encoding="utf-8")
-    for token in ("VERSION", ".changes/", "confirmation gate", "HWPX"):
+    for token in (
+        "VERSION",
+        ".changes/",
+        "confirmation gate",
+        "HWPX",
+        "Discussion",
+        "Issue",
+        "Fork",
+    ):
         if token not in agents:
             raise ValueError(f"AGENTS.md: required contributor rule missing: {token}")
-    for token in ("VERSION", ".changes/", "개인정보", "배포자"):
+    for token in (
+        "VERSION",
+        ".changes/",
+        "개인정보",
+        "배포자",
+        "Discussion",
+        "Issue",
+        "Fork",
+        "upstream/main",
+    ):
         if token not in contributing:
             raise ValueError(f"CONTRIBUTING.md: required policy missing: {token}")
     for token in ("본문과 표 셀 줄간격 160%", ".changes/<주제>.md", "한컴 시각 검증"):
@@ -679,6 +719,7 @@ def validate_skills() -> dict[str, str]:
     validate_hwpx_document_routing()
     validate_installation_guides()
     validate_improvement_workflow()
+    validate_release_distribution()
     validate_artifact_filename_policy()
     validate_contributor_policy()
     validate_headless_scripts_are_stdlib_only()
@@ -800,19 +841,43 @@ def validate_packaged_hwpx_skill(version: str) -> None:
                 "최초 작성",
                 "테스트 작성자",
                 "       1.1.1.1 검증 기준",
-                "         • ☑ 한글 산출물 검증",
+                "• ☑ 한글 산출물 검증",
             ):
                 if token not in readback:
                     raise ValueError(f"individual HWPX skill ZIP readback missing: {token}")
 
 
 def write_checksums() -> None:
-    paths = sorted(DIST_ROOT.rglob("*.zip"))
+    paths = [DIST_ROOT / f"{PLUGIN_NAME}-v{SUITE_VERSION}.zip"]
     lines = []
     for path in paths:
+        if not path.is_file():
+            raise FileNotFoundError(path)
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
         lines.append(f"{digest}  {path.relative_to(DIST_ROOT).as_posix()}")
     (DIST_ROOT / "SHA256SUMS.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def validate_distribution_outputs(versions: dict[str, str]) -> None:
+    public_zip = DIST_ROOT / f"{PLUGIN_NAME}-v{SUITE_VERSION}.zip"
+    checksum_lines = (DIST_ROOT / "SHA256SUMS.txt").read_text(encoding="utf-8").splitlines()
+    if len(checksum_lines) != 1 or not checksum_lines[0].endswith(f"  {public_zip.name}"):
+        raise ValueError("SHA256SUMS.txt must contain only the integrated public ZIP")
+    expected_digest = hashlib.sha256(public_zip.read_bytes()).hexdigest()
+    if checksum_lines[0].split("  ", 1)[0] != expected_digest:
+        raise ValueError("integrated public ZIP checksum mismatch")
+
+    internal_zips = sorted((DIST_ROOT / "skills").glob("*.zip"))
+    expected_internal = {
+        f"{skill_name}-v{versions[skill_name]}.zip" for skill_name in ALL_SKILLS
+    }
+    actual_internal = {path.name for path in internal_zips}
+    if actual_internal != expected_internal:
+        raise ValueError(
+            "CI-internal skill ZIP set mismatch; "
+            f"missing={sorted(expected_internal - actual_internal)}, "
+            f"extra={sorted(actual_internal - expected_internal)}"
+        )
 
 
 def changelog_section(version: str) -> str:
@@ -852,8 +917,9 @@ def write_release_notes(versions: dict[str, str]) -> None:
         "",
         "## 설치·업데이트",
         "",
-        f"- 전체 묶음: `{PLUGIN_NAME}-v{SUITE_VERSION}.zip`",
-        "- 필요한 스킬만 설치할 때: Release의 개별 스킬 ZIP",
+        f"- 공개 배포 자산: 통합 ZIP `{PLUGIN_NAME}-v{SUITE_VERSION}.zip`과 `SHA256SUMS.txt`",
+        "- AX1 팀 표준 업데이트는 통합 ZIP의 8개 스킬을 함께 설치·교체",
+        "- 개별 스킬 ZIP은 CI 격리 검증에만 사용하며 GitHub Release 자산으로 공개하지 않음",
         "- 다운로드 후 `SHA256SUMS.txt`로 파일 무결성 확인",
         "- 업데이트 전 기존 사용자 스킬을 백업한 뒤 새 버전 설치",
         "",
@@ -887,6 +953,7 @@ def main() -> int:
     validate_packaged_hwpx_skill(versions["bizplan-hwpx"])
     write_release_notes(versions)
     write_checksums()
+    validate_distribution_outputs(versions)
     version_summary = ", ".join(f"{name}=v{version}" for name, version in versions.items())
     print(f"Built {PLUGIN_NAME} v{SUITE_VERSION}: {version_summary}")
     return 0

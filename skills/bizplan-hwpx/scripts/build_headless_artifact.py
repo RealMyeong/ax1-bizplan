@@ -7,7 +7,7 @@
 이미 갖고 있으므로 건너뛴다.
 
 지원하는 마크다운
-    #/##/###   장·절·항 제목      | ... |   표 (첫 줄이 머리행)
+    #/##/###/####   장·절·항·세부항 제목   | ... |   표 (첫 줄이 머리행)
     빈 줄 구분  본문 문단          -, *     리스트
     1. 2. 3.   번호 목록 (번호를 글자로 남기고 각각 별개 문단)
 표준 라이브러리만 사용하며 한컴오피스·COM 창을 실행하지 않는다. 임의 템플릿은
@@ -31,9 +31,10 @@ import format_headless_artifact as A  # noqa: E402
 import check_headless_artifact as C  # noqa: E402
 
 # 제목 계층 (references/08-headless-format-rules.md 의 글자 크기 계층과 같아야 함)
-HEADING_HEIGHT = {1: 1500, 2: 1200, 3: 1050}
-OUTLINE_PREFIX_SPACES = {1: 0, 2: 3, 3: 5}
-BODY_LIST_PREFIX_SPACES = 7
+HEADING_HEIGHT = {1: 1500, 2: 1200, 3: 1050, 4: 1050}
+HEADING_STYLE = {1: "개요 1", 2: "개요 2", 3: "개요 3", 4: "개요 4"}
+OUTLINE_PREFIX_SPACES = {1: 0, 2: 3, 3: 5, 4: 7}
+BODY_LIST_PREFIX_SPACES = 9
 TABLE_OUT_MARGIN = 283
 CELL_MARGIN = (510, 510, 141, 141)  # left right top bottom
 MIN_COL_WIDTH = 3000
@@ -104,10 +105,10 @@ def parse_markdown(text: str) -> list:
             flush()
             level = len(m.group(1))
             heading_text = strip_inline(m.group(2))
-            if level <= 3:
+            if level <= 4:
                 blocks.append(("h", level, heading_text))
             else:
-                heading_text = re.sub(r"^\d+(?:\.\d+){3,}\.?\s+", "", heading_text)
+                heading_text = re.sub(r"^\d+(?:\.\d+){4,}\.?\s+", "", heading_text)
                 blocks.append(("li", 1, heading_text))
             i += 1
             continue
@@ -245,12 +246,13 @@ class StylePool:
 
 class Emitter:
     def __init__(self, pool: StylePool, text_width: int, plain_fill: str,
-                 regular: H.Font, boldfont: H.Font):
+                 regular: H.Font, boldfont: H.Font, styles: dict[str, str]):
         self.pool = pool
         self.text_width = text_width
         self.plain_fill = plain_fill
         self.regular = regular
         self.boldfont = boldfont
+        self.styles = styles
         self.next_id = 1200000000
 
     def _id(self) -> int:
@@ -274,11 +276,11 @@ class Emitter:
         return f"<hp:linesegarray>{segs}</hp:linesegarray>"
 
     def para(self, text: str, para_id: str, char_id: str, height: int, horzsize=None,
-             page_break=False, bold=False) -> str:
+             page_break=False, bold=False, style="0") -> str:
         run = f"<hp:run charPrIDRef=\"{char_id}\">{'<hp:t>' + esc(text) + '</hp:t>' if text else ''}</hp:run>"
         width = horzsize if horzsize is not None else self.text_width
         return (
-            f'<hp:p id="{self._id()}" paraPrIDRef="{para_id}" styleIDRef="0"'
+            f'<hp:p id="{self._id()}" paraPrIDRef="{para_id}" styleIDRef="{style}"'
             f' pageBreak="{1 if page_break else 0}" columnBreak="0" merged="0">'
             f"{run}{self._linesegs(text, height, bold, width)}</hp:p>"
         )
@@ -289,13 +291,14 @@ class Emitter:
         return self.para(
             text, self.pool.para_indent(0), self.pool.char(height, True), height,
             page_break=(level == 1), bold=True,
+            style=self.styles[HEADING_STYLE[level]],
         )
 
     def body(self, text: str) -> str:
         return self.para(text, self.pool.base_para, self.pool.char(H.BODY_TEXT_HEIGHT, False), H.BODY_TEXT_HEIGHT)
 
     def item(self, level: int, text: str) -> str:
-        del level  # 경량 기본 목록은 한 단계이며 실제 U+0020 공백 7개로 들여쓴다.
+        del level  # 경량 기본 목록은 한 단계이며 실제 U+0020 공백 9개로 들여쓴다.
         text = " " * BODY_LIST_PREFIX_SPACES + "• " + text.lstrip()
         return self.para(
             text,
@@ -531,7 +534,18 @@ def build(template: Path, content: Path, out: Path, cover: dict[str, str], make_
 
     pool = StylePool(header)
     regular, boldfont = H.Font(H.MALGUN), H.Font(H.MALGUN_BOLD)
-    emitter = Emitter(pool, text_width_of(section), plain_border_fill(header), regular, boldfont)
+    styles = H.style_ids_by_name(header)
+    missing_styles = [name for name in HEADING_STYLE.values() if name not in styles]
+    if missing_styles:
+        raise H.HeadlessHwpxError("승인 템플릿 제목 스타일 누락: " + ", ".join(missing_styles))
+    emitter = Emitter(
+        pool,
+        text_width_of(section),
+        plain_border_fill(header),
+        regular,
+        boldfont,
+        styles,
+    )
 
     parts = []
 

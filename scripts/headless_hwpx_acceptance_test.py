@@ -49,7 +49,9 @@ def main() -> int:
 
 ### 1.1.1 세부 검증
 
-#### 1.1.1.1 숫자 제목으로 남기지 않을 항목
+#### 1.1.1.1 사수준 제목
+
+##### 1.1.1.1.1 본문 목록으로 전환할 항목
 
 - 표준 라이브러리만 사용
 - 한컴오피스와 COM 창을 실행하지 않음
@@ -77,6 +79,7 @@ def main() -> int:
         unsupported = temp / "unsupported.hwpx"
         escaped_hangul = temp / "escaped-hangul.hwpx"
         bad_outline = temp / "bad-outline.hwpx"
+        bad_outline_h4 = temp / "bad-outline-h4.hwpx"
         content.write_text(markdown, encoding="utf-8")
         B.build(template, content, output, cover)
         issues = C.check(output)
@@ -92,6 +95,8 @@ def main() -> int:
             "한글원문보존",
             "가나다라마바사아자차카타파하",
             "한글표셀검증",
+            "검증 문서",
+            "사수준 제목",
         ):
             if token not in section:
                 raise AssertionError(f"의미·본문 보존 실패: {token}")
@@ -105,6 +110,14 @@ def main() -> int:
         paragraph_texts = []
         header = H.get_text(H.read_hwpx(output), H.HEADER)
         para_prs = H.parse_para_prs(header)
+        heading_styles = H.style_ids_by_name(header)
+        expected_heading_styles = {
+            "1. 사업 개요": heading_styles["개요 1"],
+            "   1.1 구현 방식": heading_styles["개요 2"],
+            "     1.1.1 세부 검증": heading_styles["개요 3"],
+            "       1.1.1.1 사수준 제목": heading_styles["개요 4"],
+        }
+        observed_heading_styles = set()
         for _, attrs, body in H.paragraphs(section):
             text = H.unescape("".join(H.re.findall(r"<hp:t>([^<]*)</hp:t>", body)))
             if text:
@@ -113,23 +126,32 @@ def main() -> int:
                 "1. 사업 개요",
                 "   1.1 구현 방식",
                 "     1.1.1 세부 검증",
-                "       • 숫자 제목으로 남기지 않을 항목",
-                "       • 표준 라이브러리만 사용",
+                "       1.1.1.1 사수준 제목",
+                "         • 본문 목록으로 전환할 항목",
+                "         • 표준 라이브러리만 사용",
             }:
                 pid = H.re.search(r'paraPrIDRef="(\d+)"', attrs)
                 if not pid or para_prs[pid.group(1)]["left"] != 0 or para_prs[pid.group(1)]["intent"] != 0:
                     raise AssertionError(f"개요 문단 왼쪽 들여쓰기 중복: {text!r}")
+            if text in expected_heading_styles:
+                style = H.re.search(r'styleIDRef="(\d+)"', attrs)
+                if style and style.group(1) == expected_heading_styles[text]:
+                    observed_heading_styles.add(text)
+        missing_heading_styles = set(expected_heading_styles) - observed_heading_styles
+        if missing_heading_styles:
+            raise AssertionError(f"개요 스타일 태그 불일치: {sorted(missing_heading_styles)!r}")
         for expected in (
             "1. 사업 개요",
             "   1.1 구현 방식",
             "     1.1.1 세부 검증",
-            "       • 숫자 제목으로 남기지 않을 항목",
-            "       • 표준 라이브러리만 사용",
+            "       1.1.1.1 사수준 제목",
+            "         • 본문 목록으로 전환할 항목",
+            "         • 표준 라이브러리만 사용",
         ):
             if expected not in paragraph_texts:
                 raise AssertionError(f"개요 수준 앞 공백 보존 실패: {expected!r}")
-        if any("1.1.1.1" in text for text in paragraph_texts):
-            raise AssertionError("4단계 숫자 제목이 본문 목록으로 전환되지 않음")
+        if any("1.1.1.1.1" in text for text in paragraph_texts):
+            raise AssertionError("5단계 숫자 제목이 본문 목록으로 전환되지 않음")
 
         bad_entries = H.read_hwpx(output)
         bad_section = H.get_text(bad_entries, H.SECTION).replace(
@@ -142,6 +164,18 @@ def main() -> int:
         bad_outline_issues = C.check(bad_outline)
         if not any(issue["rule"] == "개요 수준 들여쓰기" for issue in bad_outline_issues):
             raise AssertionError("잘못된 제목 앞 공백을 검사기가 탐지하지 못함")
+
+        bad_h4_entries = H.read_hwpx(output)
+        bad_h4_section = H.get_text(bad_h4_entries, H.SECTION).replace(
+            "       1.1.1.1 사수준 제목",
+            "      1.1.1.1 사수준 제목",
+            1,
+        )
+        H.set_text(bad_h4_entries, H.SECTION, bad_h4_section)
+        H.write_hwpx(bad_h4_entries, bad_outline_h4)
+        bad_h4_issues = C.check(bad_outline_h4)
+        if not any(issue["rule"] == "개요 수준 들여쓰기" for issue in bad_h4_issues):
+            raise AssertionError("잘못된 4수준 제목 앞 공백을 검사기가 탐지하지 못함")
 
         encoded_entries = H.read_hwpx(output)
         encoded_section = H.get_text(encoded_entries, H.SECTION).replace(

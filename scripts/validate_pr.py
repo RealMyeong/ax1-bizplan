@@ -11,6 +11,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PROTECTED = {"VERSION", ".codex-plugin/plugin.json", "CHANGELOG.md"}
+FORBIDDEN_DOCUMENT_SUFFIXES = {".hwp", ".hwpx", ".docx", ".pdf", ".pptx", ".xlsx"}
+APPROVED_HWPX_ASSET = "skills/bizplan-hwpx/assets/templates/ax1-deliverable-cover.hwpx"
+HWPX_TEMPLATE_MANIFEST = "skills/bizplan-hwpx/assets/templates/template-manifest.json"
 MEANINGFUL_PREFIXES = ("skills/", "shared/", "scripts/", ".github/", "docs/")
 REQUIRED_FRAGMENT_LABELS = (
     "사용자 효과:",
@@ -44,6 +47,20 @@ def main() -> int:
     protected = sorted(PROTECTED & set(files))
     if protected:
         errors.append("기여 PR은 배포자 전용 파일을 수정할 수 없음: " + ", ".join(protected))
+
+    forbidden_documents = sorted(
+        path
+        for path in files
+        if Path(path).suffix.lower() in FORBIDDEN_DOCUMENT_SUFFIXES
+        and path != APPROVED_HWPX_ASSET
+    )
+    if forbidden_documents:
+        errors.append(
+            "승인 경로 밖의 문서 바이너리는 PR에 포함할 수 없음: "
+            + ", ".join(forbidden_documents)
+        )
+    if APPROVED_HWPX_ASSET in files and HWPX_TEMPLATE_MANIFEST not in files:
+        errors.append("승인 HWPX 템플릿 변경에는 template-manifest.json 동시 변경이 필요함")
 
     meaningful = any(path.startswith(MEANINGFUL_PREFIXES) for path in files)
     fragments = [

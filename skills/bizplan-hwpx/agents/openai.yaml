@@ -1,6 +1,6 @@
 interface:
-  display_name: "AX1 한글 사업계획서"
-  short_description: "승인 템플릿 경량 생성과 HWPX 양식 반영·검증"
-  default_prompt: "$bizplan-hwpx를 사용해 승인 AX1 템플릿이면 한컴·COM 없는 경량 모드로 본문과 표 셀 줄간격 160% HWPX를 만들고, 그 밖의 양식은 원본을 보존해 반영·검증해줘."
+  display_name: "AX1 한글 문서·사업계획서"
+  short_description: "공식 사업계획서와 AX1 산출물 HWPX 작성·검증"
+  default_prompt: "$bizplan-hwpx를 사용해 사업계획서는 공식 양식을 보존하고 일반 산출물은 승인 AX1 템플릿으로 HWPX를 작성·검증해줘."
 policy:
   allow_implicit_invocation: true

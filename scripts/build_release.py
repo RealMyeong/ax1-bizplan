@@ -7,10 +7,12 @@ import importlib.util
 import ast
 import hashlib
 import json
+import os
 import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import zipfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -27,7 +29,6 @@ SKILLS_ROOT = ROOT / "skills"
 DIST_ROOT = ROOT / "dist"
 PLUGIN_NAME = "ax1-bizplan"
 REPOSITORY_URL = "https://github.com/RealMyeong/ax1-bizplan"
-FEEDBACK_FORM_URL = "https://forms.gle/GG6GYrgboA4pnkVE6"
 FORBIDDEN_ARTIFACT_SUFFIXES = {
     ".hwp",
     ".hwpx",
@@ -71,6 +72,14 @@ CONTRIBUTOR_POLICY_FILES = (
     ".github/PULL_REQUEST_TEMPLATE.md",
     "scripts/validate_pr.py",
 )
+
+
+def utf8_subprocess_env() -> dict[str, str]:
+    env = os.environ.copy()
+    env["PYTHONUTF8"] = "1"
+    env["PYTHONIOENCODING"] = "utf-8"
+    return env
+
 
 GENERAL_REFERENCES = {
     "01-core-principles.md": "shared/core/01-core-principles.md",
@@ -279,10 +288,12 @@ def validate_plugin() -> None:
 
 
 def validate_no_private_artifacts() -> None:
+    excluded_roots = {".git", ".uv-cache", "dist", "tmp", "__pycache__"}
     forbidden = [
         path.relative_to(ROOT).as_posix()
-        for path in SKILLS_ROOT.rglob("*")
+        for path in ROOT.rglob("*")
         if path.is_file()
+        and not any(part in excluded_roots for part in path.relative_to(ROOT).parts)
         and path.suffix.lower() in FORBIDDEN_ARTIFACT_SUFFIXES
         and path.relative_to(ROOT) != APPROVED_HWPX_ASSET
     ]
@@ -325,6 +336,27 @@ def validate_installation_guides() -> None:
             raise ValueError(f"{relative}: installation guide is missing skills: {missing}")
         if "8개 스킬" not in text:
             raise ValueError(f"{relative}: installation guide must state the complete 8-skill set")
+
+
+def validate_improvement_workflow() -> None:
+    policy_files = (
+        "README.md",
+        "CONTRIBUTING.md",
+        "docs/team-guide.md",
+        "docs/maintainer-guide.md",
+        "docs/pr-operating-policy.md",
+        "docs/ax1-bizplan-guide.html",
+        "docs/ax1-skills-suite-roadmap.md",
+        "docs/feedback-intake-template.md",
+    )
+    for relative in policy_files:
+        text = (ROOT / relative).read_text(encoding="utf-8")
+        if "forms.gle" in text or "개선 요청 Form" in text:
+            raise ValueError(f"{relative}: retired Form-based improvement workflow remains")
+    team_guide = (ROOT / "docs" / "team-guide.md").read_text(encoding="utf-8")
+    for token in ("AGENTS.md", ".changes", "PR을 생성", "민감정보 없는 예시"):
+        if token not in team_guide:
+            raise ValueError(f"team guide: agent-driven PR instruction missing: {token}")
 
 
 def validate_contributor_policy() -> None:
@@ -412,6 +444,16 @@ def validate_approved_hwpx_asset() -> None:
     for key, value in expected.items():
         if manifest.get(key) != value:
             raise ValueError(f"template manifest: {key} must be {value!r}")
+    if not manifest.get("approvedBy"):
+        raise ValueError("template manifest: approvedBy is missing")
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", manifest.get("approvedOn", "")):
+        raise ValueError("template manifest: approvedOn must use YYYY-MM-DD")
+    if "individual-skill ZIPs" not in manifest.get("distribution", ""):
+        raise ValueError("template manifest: individual-skill distribution is missing")
+    if manifest.get("sanitized") is not True:
+        raise ValueError("template manifest: sanitized must be true")
+    if "general HWPX deliverables" not in manifest.get("purpose", ""):
+        raise ValueError("template manifest: general-deliverable purpose is missing")
     actual_sha = hashlib.sha256(asset.read_bytes()).hexdigest()
     if manifest.get("sha256") != actual_sha:
         raise ValueError("approved HWPX template SHA-256 mismatch")
@@ -488,6 +530,7 @@ def validate_headless_acceptance() -> None:
         capture_output=True,
         text=True,
         encoding="utf-8",
+        env=utf8_subprocess_env(),
     )
     if result.returncode != 0:
         raise ValueError(
@@ -504,6 +547,7 @@ def validate_presentation_acceptance() -> None:
         capture_output=True,
         text=True,
         encoding="utf-8",
+        env=utf8_subprocess_env(),
     )
     if result.returncode != 0:
         raise ValueError(
@@ -525,6 +569,7 @@ def validate_skills() -> dict[str, str]:
         validate_references(skill)
     validate_confirmation_gate()
     validate_installation_guides()
+    validate_improvement_workflow()
     validate_contributor_policy()
     validate_headless_scripts_are_stdlib_only()
     validate_presentation_scripts_are_local_only()
@@ -559,6 +604,88 @@ def build_zips(versions: dict[str, str]) -> None:
     with zipfile.ZipFile(plugin_output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         add_tree(archive, ROOT / ".codex-plugin", Path(PLUGIN_NAME) / ".codex-plugin")
         add_tree(archive, SKILLS_ROOT, Path(PLUGIN_NAME) / "skills")
+
+
+def validate_packaged_hwpx_skill(version: str) -> None:
+    archive_path = DIST_ROOT / "skills" / f"bizplan-hwpx-v{version}.zip"
+    required = {
+        "bizplan-hwpx/SKILL.md",
+        "bizplan-hwpx/assets/templates/ax1-deliverable-cover.hwpx",
+        "bizplan-hwpx/assets/templates/template-manifest.json",
+        "bizplan-hwpx/scripts/build_headless_artifact.py",
+        "bizplan-hwpx/scripts/check_headless_artifact.py",
+    }
+    with zipfile.ZipFile(archive_path) as archive:
+        missing = sorted(required - set(archive.namelist()))
+        if missing:
+            raise ValueError("individual HWPX skill ZIP is incomplete: " + ", ".join(missing))
+        with tempfile.TemporaryDirectory(prefix="ax1-hwpx-package-") as temp_dir:
+            root = Path(temp_dir)
+            archive.extractall(root)
+            skill = root / "bizplan-hwpx"
+            packaged_manifest = json.loads(
+                (skill / "assets" / "templates" / "template-manifest.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            packaged_template = skill / "assets" / "templates" / packaged_manifest["file"]
+            if hashlib.sha256(packaged_template.read_bytes()).hexdigest() != packaged_manifest["sha256"]:
+                raise ValueError("individual HWPX skill ZIP template SHA-256 mismatch")
+            content = root / "general-deliverable.md"
+            output = root / "general-deliverable.hwpx"
+            content.write_text(
+                "# 1. 데이터 수집 정의서\n\n"
+                "## 1.1 목적\n\n"
+                "### 1.1.1 처리 절차\n\n"
+                "#### 1.1.1.1 검증 기준\n\n"
+                "- ☑ 한글 산출물 검증\n",
+                encoding="utf-8",
+            )
+            build = subprocess.run(
+                [
+                    sys.executable,
+                    str(skill / "scripts" / "build_headless_artifact.py"),
+                    "--content", str(content),
+                    "--agency", "테스트 발주기관",
+                    "--program", "테스트 사업",
+                    "--project-number", "TEST-0000",
+                    "--project", "테스트 프로젝트",
+                    "--title", "데이터 수집 정의서",
+                    "--document-type", "정의서",
+                    "-o", str(output),
+                ],
+                cwd=root,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                env=utf8_subprocess_env(),
+            )
+            if build.returncode != 0:
+                raise ValueError("individual HWPX skill ZIP build failed:\n" + build.stdout + build.stderr)
+            check = subprocess.run(
+                [
+                    sys.executable,
+                    str(skill / "scripts" / "check_headless_artifact.py"),
+                    str(output),
+                ],
+                cwd=root,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                env=utf8_subprocess_env(),
+            )
+            if check.returncode != 0:
+                raise ValueError("individual HWPX skill ZIP check failed:\n" + check.stdout + check.stderr)
+            with zipfile.ZipFile(output) as generated:
+                readback = generated.read("Contents/section0.xml").decode("utf-8")
+            for token in (
+                "데이터 수집 정의서",
+                "정의서",
+                "       1.1.1.1 검증 기준",
+                "         • ☑ 한글 산출물 검증",
+            ):
+                if token not in readback:
+                    raise ValueError(f"individual HWPX skill ZIP readback missing: {token}")
 
 
 def write_checksums() -> None:
@@ -625,7 +752,7 @@ def write_release_notes(versions: dict[str, str]) -> None:
             "",
             f"- [전체 변경이력]({REPOSITORY_URL}/blob/v{SUITE_VERSION}/CHANGELOG.md)",
             f"- [팀원 설치·활용 안내]({REPOSITORY_URL}/blob/v{SUITE_VERSION}/docs/team-guide.md)",
-            f"- [개선 요청 Form]({FEEDBACK_FORM_URL})",
+            f"- [개선 PR 안내]({REPOSITORY_URL}/blob/v{SUITE_VERSION}/CONTRIBUTING.md)",
             "",
         ]
     )
@@ -639,6 +766,7 @@ def main() -> int:
     sync_shared_resources()
     versions = validate_skills()
     build_zips(versions)
+    validate_packaged_hwpx_skill(versions["bizplan-hwpx"])
     write_release_notes(versions)
     write_checksums()
     version_summary = ", ".join(f"{name}=v{version}" for name, version in versions.items())

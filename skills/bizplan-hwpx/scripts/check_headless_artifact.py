@@ -138,7 +138,8 @@ def check(path: Path) -> list:
 
     # 3-1. 공식 양식 지정이 없는 경량 본문의 개요 수준은 실제 U+0020 앞 공백으로
     # 표현하고 문단 왼쪽 들여쓰기를 더하지 않는다.
-    outline_spaces = {1500: 0, 1200: 3, 1050: 5}
+    outline_spaces = {1500: 0, 1200: 3}
+    heading_styles = H.style_ids_by_name(header)
     for offset, attrs, body in H.paragraphs(section):
         if offset < body_start or H.in_any_span(spans, offset):
             continue
@@ -151,9 +152,21 @@ def check(path: Path) -> list:
             continue
         char_pr = char_prs.get(run_match.group(1))
         expected = outline_spaces.get(char_pr.height) if char_pr and char_pr.bold else None
+        heading_level = {1500: 1, 1200: 2}.get(char_pr.height) if char_pr and char_pr.bold else None
         stripped = text.lstrip()
+        if char_pr and char_pr.bold and char_pr.height == 1050:
+            number = H.re.match(r"^(\d+(?:\.\d+){0,3})\.?\s+", stripped)
+            number_depth = number.group(1).count(".") + 1 if number else None
+            if number_depth == 4 or (number_depth is None and text.startswith(" " * 7)):
+                expected = 7
+                heading_level = 4
+            else:
+                expected = 5
+                heading_level = 3
+        if char_pr and char_pr.bold and H.re.match(r"^\d+(?:\.\d+){4,}\.?\s+", stripped):
+            add("개요 수준", f"숫자 제목이 허용된 4단계를 초과함 :: {stripped[:34]!r}")
         if stripped.startswith("• "):
-            expected = 7
+            expected = 9
         if expected is None:
             continue
         if text != " " * expected + stripped:
@@ -170,6 +183,14 @@ def check(path: Path) -> list:
                 "개요 수준 들여쓰기",
                 f"문단모양 {pid}의 왼쪽·첫 줄 들여쓰기가 0이 아니어서 앞 공백과 중복됨",
             )
+        if heading_level:
+            expected_style = heading_styles.get(f"개요 {heading_level}")
+            got_style = H.re.search(r'styleIDRef="(\d+)"', attrs)
+            if expected_style is None or not got_style or got_style.group(1) != expected_style:
+                add(
+                    "개요 수준 스타일",
+                    f"수준 {heading_level} 제목의 styleIDRef가 개요 {heading_level}과 일치하지 않음",
+                )
 
     # 4. 글자 크기 - 본문 구간
     used_heights = {}

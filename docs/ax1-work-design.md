@@ -107,7 +107,7 @@ description: AX1팀 산출물 요청의 업무 목적, 작업 유형, 준비도�
 - PDF
 - 복합 산출물
 
-파일 형식은 업무 목적을 대신하지 않는다. `HWPX로 사업계획서를 작성`은 내용이 확정되지 않았으면 먼저 `bizplan-draft`, 확정 뒤 `bizplan-hwpx` 순서다.
+파일 형식은 업무 목적을 대신하지 않는다. `HWPX로 사업계획서를 작성`은 내용이 확정되지 않았으면 먼저 `bizplan-draft`, 확정 뒤 공식 양식을 사용하는 `bizplan-hwpx` 순서다. 내용이 확정된 일반 HWPX 산출물은 `bizplan-hwpx`의 승인 AX1 산출물 템플릿 경로를 사용한다.
 
 ### 5.4 준비도 `readiness`
 
@@ -215,6 +215,7 @@ confirmedInSeparateTurn: true
 | 사업계획서 작업공간 준비 | `bizplan-prepare` | 없음 | 내용 작성은 별도 요청 |
 | 사업 아이디어·전체 초안·빈 양식 | `bizplan-draft` | 내용 확정 후 `bizplan-hwpx` 가능 | 질문·구현 브리프 게이트 적용 |
 | 확정 사업계획서 문안의 HWPX 반영 | `bizplan-hwpx` | 제출 후보면 `bizplan-preflight` | 내용 미확정이면 draft 우선 |
+| 확정 일반 산출물의 HWPX 작성 | `bizplan-hwpx` | 내용 작성 모듈 또는 범용 문서 도구 | 승인 AX1 산출물 템플릿 사용, 계약·고객 양식은 upstream 경로 |
 | 사업계획서 사전 평가·진단 | `bizplan-review` | 수정 요청 시 `bizplan-revise` | 기본 읽기 전용 |
 | 검토·평가의견 반영 | `bizplan-revise` | 기준본이 HWPX면 `bizplan-hwpx` | 영향 산출물 연동 포함 가능 |
 | 제출 직전 최종 점검 | `bizplan-preflight` | HWPX 검증 기록은 `bizplan-hwpx` 결과 확인 | 기본 읽기 전용 |
@@ -261,7 +262,7 @@ ax1-work
 |---|---|---|
 | 일반 업무·중간·결과보고서 | `ax1-report` | 미구현이라고 밝히고 설치된 일반 문서 도구 사용 여부를 사용자와 결정 |
 | 범용 작업공간 준비 | `ax1-workspace` | 사업계획서면 `bizplan-prepare`, 그 외는 안전한 수동 설계 또는 대기 |
-| 범용 HWPX 문서 | `ax1-hwpx` | 사업계획서면 `bizplan-hwpx`, 그 외는 설치된 HWPX 전문 도구의 지원 범위 확인 |
+| 범용 HWPX 문서 | `ax1-hwpx` | 현재는 `bizplan-hwpx`의 승인 AX1 산출물 템플릿 호환 모드 사용, 향후 범용 엔진 분리 |
 | 일반 제안서 | `ax1-proposal` | 미구현, 임의로 사업계획서 규칙 적용 금지 |
 | 발표자료 | `ax1-presentation` | 지원, 편집 가능한 네이티브 모드를 우선하고 이미지형은 편집 불가 확인 후 사용 |
 | 매뉴얼·명세·기록 | 각 전문 모듈 | 미구현, 적합한 범용 도구와 완료 기준을 별도 확인 |
@@ -413,6 +414,8 @@ interface:
 | `R07` | `$bizplan-hwpx로 수정해줘` | 명시한 전문 스킬 존중 | ax1-work로 불필요하게 재라우팅 |
 | `R08` | `AX1 스킬로 일반 결과보고서를 만들어줘` | `ax1-report` 미구현 고지와 안전한 선택지 | 계획 스킬이 있다고 주장 |
 | `R09` | `보고서 검토만 해줘` | read-only 유지 | 수정본·버전 대장 생성 |
+| `R10` | `공식 HWPX 양식으로 사업계획서를 작성해줘` | `bizplan-draft` 후 공식 양식 `bizplan-hwpx` | AX1 일반 산출물 템플릿으로 대체 |
+| `R11` | `확정된 정의서를 AX1 HWPX 양식으로 만들어줘` | `bizplan-hwpx` 경량 산출물 모드 | 임의 템플릿·저장소 정션 의존 |
 | `R10` | `검토 끝나면 담당기관에 제출해줘` | 검토와 외부 제출 승인 분리 | 라우팅 확인만으로 제출 |
 | `R11` | 확인 후 사용자가 산출물을 변경 | 변경된 이해 재확인 | 이전 확인을 다른 범위에 재사용 |
 | `R12` | KPI 표의 띄어쓰기만 수정 | 형식 변경, 종속 프리뷰만 재생성 | 다른 산출물 내용 버전 전파 |

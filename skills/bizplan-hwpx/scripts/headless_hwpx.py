@@ -434,6 +434,17 @@ def parse_para_prs(header: str) -> dict:
     return out
 
 
+def style_ids_by_name(header: str) -> dict:
+    """스타일 이름을 HWPX style id에 연결한다."""
+    out = {}
+    for match in re.finditer(r"<hh:style ([^>]*?)/?>", header):
+        style_id = re.search(r'id="(\d+)"', match.group(1))
+        name = re.search(r'name="([^"]*)"', match.group(1))
+        if style_id and name:
+            out.setdefault(name.group(1), style_id.group(1))
+    return out
+
+
 def malgun_font_ids(header: str) -> set:
     """맑은 고딕으로 등록된 font id 집합."""
     return {m.group(1) for m in re.finditer(r'<hh:font id="(\d+)" face="([^"]*)"', header) if m.group(2) == FONT_FACE}

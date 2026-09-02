@@ -13,7 +13,7 @@ AX1 팀의 사업계획서와 보고·제안 발표자료 등 반복 산출물 �
 | 배포자 | [개선 접수·개발·릴리스 운영 안내](docs/maintainer-guide.md) |
 | 기여자·PR | [기여 안내](CONTRIBUTING.md) · [PR 운영 원칙](docs/pr-operating-policy.md) |
 | 발표자료 upstream 검토 | [codex-ppt-skill 검토와 AX1 적용 결정](docs/upstream-codex-ppt-assessment.md) |
-| 개선 요청 | [AX1 사업계획서 스킬 개선 요청 Form](https://forms.gle/GG6GYrgboA4pnkVE6) |
+| 개선 요청 | [기여 안내](CONTRIBUTING.md) · [PR 운영 원칙](docs/pr-operating-policy.md) · [열린 PR](https://github.com/RealMyeong/ax1-bizplan/pulls) |
 | 배포 파일 | [GitHub Releases](https://github.com/RealMyeong/ax1-bizplan/releases) |
 
 GitHub 접근 권한이 없는 팀원에게는 배포자가 최신 Release ZIP과 `SHA256SUMS.txt`를 공유 드라이브로 전달합니다. 팀원은 설치 경로를 직접 다루기보다 Codex 또는 Claude에게 설치·백업·검증을 요청하는 방식을 기본으로 합니다.
@@ -24,7 +24,7 @@ GitHub 접근 권한이 없는 팀원에게는 배포자가 최신 Release ZIP�
 |---|---|
 | `bizplan-prepare` | 표준 작업공간, 준비현황과 이전버전 보관함 생성 |
 | `bizplan-draft` | 대화형 사업 설계, 양식 배분 및 밀도 있는 신규 초안 작성 |
-| `bizplan-hwpx` | 승인 템플릿 경량 HWPX 생성, 공식 양식 반영과 한컴 검증 |
+| `bizplan-hwpx` | 사업계획서 공식 양식 반영, AX1 일반 산출물 HWPX 생성과 한컴 검증 |
 | `bizplan-review` | 평가위원 관점 사전 검토와 교정문안 작성 |
 | `bizplan-revise` | 검토의견 반영과 관련 항목 전역 동기화 |
 | `bizplan-preflight` | 제출 직전 형식·수치·도표·버전 최종 점검 |
@@ -39,7 +39,13 @@ GitHub 접근 권한이 없는 팀원에게는 배포자가 최신 Release ZIP�
 
 ## HWPX 사용 방식
 
-승인된 AX1 표지 템플릿에 확정 Markdown을 넣어 새 산출물을 만드는 경량 모드는 Python 표준 라이브러리만 사용합니다. 한컴오피스·COM·pyhwpx를 실행하지 않아 창이나 승인 팝업 없이 생성할 수 있고, 본문과 표 셀 줄간격을 모두 160%로 적용합니다.
+| 문서 유형 | 기본 양식 | 처리 경로 |
+|---|---|---|
+| 국가 R&D·공모 사업계획서 | 공고·제출기관이 제공한 공식 양식 | 원본을 보존해 공식 항목에 반영하고 검증 |
+| 정의서·설계서·분석서·보고서·회의록 등 일반 산출물 | `bizplan-hwpx`에 포함된 승인 AX1 산출물 템플릿 | Python 표준 라이브러리 경량 생성 |
+| 계약·고객이 별도 양식을 지정한 일반 산출물 | 해당 필수 양식 | 원본을 보존하는 upstream 편집 경로 |
+
+경량 모드는 한컴오피스·COM·pyhwpx를 실행하지 않아 창이나 승인 팝업 없이 생성할 수 있고, 본문과 표 셀 줄간격을 모두 160%로 적용합니다. 제목은 `1. / 1.1 / 1.1.1 / 1.1.1.1`의 4단계까지 표시하며 그 아래는 본문 목록으로 작성합니다. 사업계획서 공식 양식을 AX1 일반 산출물 템플릿으로 대체하지 않습니다.
 
 공식 양식의 빈칸 채움, 기존 HWPX 수정, 다중 섹션·그림·병합 셀 등은 [airmang/hwpx-plugins](https://github.com/airmang/hwpx-plugins)를 별도 의존성으로 사용합니다. 이 기능이 필요한 팀원은 한 번만 다음 플러그인을 설치하고 Codex 또는 Claude를 다시 시작합니다.
 
@@ -72,8 +78,8 @@ docs/            팀 운영 양식
 ## 운영 흐름
 
 ```text
-팀 사용 → 공유 드라이브 개선 인박스 → 근거 분류 → 스킬 수정
-       → 검증 → Unreleased 누적 → 배포 승인 → 버전·태그
+팀 사용 → 에이전트와 익명 재현·로컬 개선 → 브랜치·검증 → PR
+       → 배포자 통합 → Unreleased 누적 → 배포 승인 → 버전·태그
        → GitHub Release → 팀원 업데이트
 ```
 
@@ -124,7 +130,7 @@ Claude에서는 같은 저장소의 `skills/`를 `~/.claude/skills/`에 설치�
 - 개인정보, 계정정보, API 키와 인증서
 - 작업 중간파일과 자동 생성된 DOCX·HWP·HWPX·PDF. 단, 매니페스트 SHA-256과 익명화 검사를 통과한 `bizplan-hwpx` 승인 템플릿 한 개는 예외
 
-새 사례에서 얻은 내용은 원문을 올리는 대신 `docs/feedback-intake-template.md`로 정리하고, 재사용 가능한 규칙·테스트만 저장소에 반영합니다.
+새 사례에서 얻은 내용은 원문을 올리는 대신 `docs/feedback-intake-template.md`의 PR 준비 브리프로 익명화하고, 재사용 가능한 규칙·테스트만 브랜치와 PR에 반영합니다.
 
 ## 참고
 

@@ -2,7 +2,7 @@
 name: bizplan-review
 description: 작성된 국가 R&D·공모 사업계획서를 공고문·RFP·양식·평가배점표와 대조해 평가위원 관점으로 사전 검토한다. 논리, KPI, 데이터, 역할, 실증, 사업화, 문서 간 정합성의 우선순위별 지적과 교정문안이 필요할 때 사용한다. 신규 초안 작성이나 제출 직전 형식 점검만 요청된 경우에는 사용하지 않는다.
 metadata:
-  version: "0.4.2"
+  version: "0.4.3"
   architecture: "generic-core-plus-project-profile"
   updated: "2026-09-02"
 ---

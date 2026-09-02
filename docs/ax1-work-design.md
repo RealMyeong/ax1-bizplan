@@ -10,6 +10,7 @@
 - 작업을 시작하기 전에 이해한 목적·입력·범위·산출물·가정을 사용자와 확인한다.
 - 하나의 주 전문 스킬과 필요한 보조 스킬만 선택한다.
 - 내용 작성, 파일 형식 처리, 검토와 제출 점검의 경계를 보존한다.
+- 새 관리 산출물은 전문 스킬에 AX1 DXS 파일명 기준 또는 제출처·고객 필수 파일명 권한을 전달한다.
 - 아직 구현되지 않은 스킬이나 지원 범위를 존재하는 것처럼 말하지 않는다.
 - 직접 특정 스킬을 요청한 사용자의 선택을 불필요하게 가로채지 않는다.
 - 위임 과정에서 파일 수정, 외부 전송 또는 제출 권한을 확대하지 않는다.
@@ -157,6 +158,7 @@ purpose: 사용자와 확인한 목적
 # 아래 두 필드는 HWPX 요청일 때만 포함
 documentPurpose: business-plan | general-deliverable
 expectedFormatAuthority: official-rfp-form | customer-required-form | approved-ax1-template | unknown | not-applicable
+filenameAuthority: submission-required | customer-required | ax1-dxs-standard | unknown | not-applicable
 inputs: 예상 입력과 기준
 scope: 진행 범위
 exclusions: 진행하지 않을 범위
@@ -171,6 +173,7 @@ confirmedInSeparateTurn: true
 - 동일한 사용자 요청과 같은 논리적 작업 흐름
 - 목적·입력·범위·제외·산출물·부작용 수준이 일치
 - HWPX 요청이면 `documentPurpose`와 예상 양식 권한이 일치하며, 실제 자료 확인으로 권한이 달라지지 않음
+- 파일 생성 요청이면 `filenameAuthority`가 일치하며, AX1 기본 규칙일 때 사업코드·문서유형 코드가 확인됨
 - 사용자가 확인 뒤 새로운 범위 변경을 요청하지 않음
 - 전문 스킬의 추가 작업이 확인 범위 안에 있음
 

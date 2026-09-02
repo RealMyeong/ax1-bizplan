@@ -368,7 +368,7 @@
   <header class="topbar">
     <div class="topbar-inner">
       <div class="brand"><span class="brand-mark">AX1</span> AX1 Skill Pack</div>
-      <div class="version">안정 버전 v0.8.1 · 2026-09-02</div>
+      <div class="version">안정 버전 v0.9.0 · 2026-09-02</div>
     </div>
   </header>
 
@@ -527,6 +527,7 @@ AX1 검증 ref: b7ab90a1db826c5fa5db024ad01dc5132d073953
 
         <article class="card">
           <h3>결과물 버전 관리</h3>
+          <p>제출처·고객이 별도 이름을 지정하지 않은 새 관리 산출물은 <code>DXS-[사업코드]-[문서유형]-[파일제목]-[YYYYMMDD]-vX.Y.[확장자]</code>를 사용합니다. 사업코드와 문서유형 코드는 팀 공통 최신 용어사전을 기준으로 하며, 불명확하면 에이전트가 임의로 만들지 않고 사용자에게 확인합니다.</p>
           <p><code>08_작성중</code>·<code>09_검토_수정</code>·<code>10_제출본</code>에는 산출물군별 최신 검증본 한 묶음만 유지합니다. 이전본과 동반 프리뷰·검증기록은 <code>98_이전버전</code>으로 옮기고 <code>산출물_버전이력.md</code>에서 확인합니다.</p>
           <p>한 산출물의 KPI·예산·기관 역할·기간·과업·실증 등이 바뀌면 다른 최신 산출물의 영향 위치를 비교하고 필요한 파일만 각각 새 버전으로 함께 갱신합니다. 기준 원천과 결과는 <code>산출물_연동현황.md</code>에 기록하며, 파생본의 고유 값을 상위 원장으로 자동 역전파하지 않습니다.</p>
           <p>원본·RFP·양식과 서명·접수 증거는 자동 이동하지 않습니다. 접수번호·서명·제출시각이 특정 해시와 연결된 실제 제출 완료 파일도 이동·이름변경·덮어쓰기하지 않고, 정정은 별도 재제출 후보로 만듭니다. 검증 실패, 최신 버전 판별이 모호한 경우, 읽기 전용 검토에서는 어떤 파일도 이동하지 않습니다.</p>
@@ -543,10 +544,10 @@ AX1 검증 ref: b7ab90a1db826c5fa5db024ad01dc5132d073953
 
         <article class="card">
           <h3>일반 산출물: AX1 양식 HWPX 생성</h3>
-          <p>정의서·설계서·분석서·보고서·회의록의 확정 내용은 승인 AX1 산출물 템플릿과 표준 라이브러리로 한컴오피스·COM·pyhwpx 창이나 승인 팝업 없이 만듭니다. 본문과 표 셀 줄간격은 모두 160%이고 제목은 4단계까지 표시합니다. 확정 버전은 개정 이력과 파일명 끝의 단일 버전 접미사에 함께 기록하며 불일치나 기존 출력이 있으면 쓰기 전에 중단합니다.</p>
+          <p>정의서·설계서·분석서·보고서·회의록의 확정 내용은 승인 AX1 산출물 템플릿과 표준 라이브러리로 한컴오피스·COM·pyhwpx 창이나 승인 팝업 없이 만듭니다. 본문과 표 셀 줄간격은 모두 160%이고 제목은 4단계까지 표시합니다. 출력 파일은 DXS 표준 파일명을 사용하고 그 날짜·버전을 개정 이력과 함께 기록하며 불일치나 기존 출력이 있으면 쓰기 전에 중단합니다.</p>
           <div class="code-wrap">
             <button class="copy-button" type="button">복사</button>
-            <pre><code>$bizplan-hwpx를 사용해서 이 확정 내용을 승인 AX1 산출물 양식으로 HWPX 작성해줘. 표지 정보 6종과 템플릿 SHA-256을 확인하고 한컴·COM 창 없이 생성해줘. 본문과 표 셀 줄간격은 160%, 제목은 1. / 1.1 / 1.1.1 / 1.1.1.1의 4단계까지 표시하고 체크박스 의미를 보존해줘. 확정 버전과 개정내역은 개정 이력표와 파일명 끝의 단일 버전 접미사에 똑같이 기록하고 기존 출력은 덮어쓰지 마. 구조 자동검사와 아직 필요한 한컴 시각 검증을 구분해서 알려줘.</code></pre>
+            <pre><code>$bizplan-hwpx를 사용해서 이 확정 내용을 승인 AX1 산출물 양식으로 HWPX 작성해줘. 표지 정보 6종과 템플릿 SHA-256을 확인하고 한컴·COM 창 없이 생성해줘. 본문과 표 셀 줄간격은 160%, 제목은 1. / 1.1 / 1.1.1 / 1.1.1.1의 4단계까지 표시하고 체크박스 의미를 보존해줘. 팀 공통 용어사전에서 사업코드·문서유형 코드를 확인하고 DXS-[사업코드]-[문서유형]-[파일제목]-[YYYYMMDD]-vX.Y.hwpx로 저장해줘. 날짜·버전은 개정 이력표와 똑같이 기록하고 기존 출력은 덮어쓰지 마. 구조 자동검사와 아직 필요한 한컴 시각 검증을 구분해서 알려줘.</code></pre>
           </div>
         </article>
 
@@ -572,7 +573,7 @@ AX1 검증 ref: b7ab90a1db826c5fa5db024ad01dc5132d073953
           <h3>업데이트 요청문</h3>
           <div class="code-wrap">
             <button class="copy-button" type="button">복사</button>
-            <pre><code>AX1 Skill Pack을 최신 안정 버전으로 업데이트해줘. 기존 버전을 백업하고 8개 스킬을 함께 교체한 뒤 업데이트 전후 버전, 변경된 스킬과 검증 결과를 알려줘. HWPX 플러그인을 사용하면 upstream 버전과 건강검사도 확인해줘.</code></pre>
+            <pre><code>AX1 Skill Pack을 월요일 최신 안정 Release로 업데이트해줘. 기존 버전을 백업하고 8개 스킬을 함께 교체한 뒤 업데이트 전후 버전, 이번 릴리즈의 팀원별 반영 내용과 검증 결과를 알려줘. HWPX 플러그인을 사용하면 upstream 버전과 건강검사도 확인해줘.</code></pre>
           </div>
         </article>
 
@@ -593,6 +594,9 @@ AX1 검증 ref: b7ab90a1db826c5fa5db024ad01dc5132d073953
 
       <div class="callout safe">
         <strong>개선 요청:</strong> 에이전트에게 문제·현재 결과·기대 결과를 설명하고 민감정보 없는 재현부터 수정·테스트·<code>.changes</code>·커밋·푸시·PR 생성까지 요청합니다. <a href="https://github.com/RealMyeong/ax1-bizplan/blob/main/CONTRIBUTING.md" target="_blank" rel="noreferrer">기여 안내</a>
+      </div>
+      <div class="callout">
+        <strong>주간 배포:</strong> 팀원은 개선 PR을 수시로 올리고, 배포자는 일요일 취합·검증한 뒤 월요일 새 안정 Release와 팀원별 반영 내용·제외 범위·검증 상태를 안내합니다. 검증 완료 변경이 없는 주에는 빈 Release를 만들지 않습니다.
       </div>
       <div class="callout danger">
         <strong>입력 금지:</strong> 실제 사업계획서 내용, 기관명, 개인정보, 미공개 RFP·평가의견, 제한 Drive 내부 경로와 계정정보는 GitHub Issue·커밋·PR에 직접 입력하지 않습니다.
@@ -616,10 +620,10 @@ AX1 검증 ref: b7ab90a1db826c5fa5db024ad01dc5132d073953
           <h3>권장 운영 주기</h3>
           <div class="flow" style="grid-template-columns:repeat(3,minmax(0,1fr))">
             <div class="flow-item"><span class="flow-no">1</span><strong>상시</strong><small>개선 PR 접수</small></div>
-            <div class="flow-item"><span class="flow-no">2</span><strong>주 1회</strong><small>분류·추가정보</small></div>
-            <div class="flow-item"><span class="flow-no">3</span><strong>2~4주</strong><small>일반 릴리스</small></div>
+            <div class="flow-item"><span class="flow-no">2</span><strong>일요일</strong><small>취합·선별 통합·검증</small></div>
+            <div class="flow-item"><span class="flow-no">3</span><strong>월요일</strong><small>새 안정 릴리스·업데이트 안내</small></div>
           </div>
-          <p>업무 중단 수준의 오류만 검증 후 패치 버전으로 즉시 배포합니다.</p>
+          <p>릴리즈 노트에는 PR 번호와 팀원별 실제 반영 내용·제외 범위·검증 상태를 기록합니다. 검증 완료 변경이 없는 주에는 빈 태그를 만들지 않으며, 업무 중단 수준의 오류는 검증 후 즉시 패치합니다.</p>
         </article>
 
         <article class="card">
@@ -690,7 +694,7 @@ git switch -c fix/간단한-작업명</code></pre>
               </tbody>
             </table>
           </div>
-          <p>v0.7.0 이후에는 영향 파일·스킬 수가 많아도 호환 가능한 기존 기능 개선이면 패치를 기본으로 합니다. 변경은 <code>Unreleased</code>에 누적하고, 새 기능군이나 사용법 전환일 때만 관리자가 마이너를 승인합니다. 현재 안정 버전은 <code>v0.8.1</code>입니다.</p>
+          <p>v0.7.0 이후에는 영향 파일·스킬 수가 많아도 호환 가능한 기존 기능 개선이면 패치를 기본으로 합니다. 변경은 <code>Unreleased</code>에 누적하고, 새 기능군이나 사용법 전환일 때만 관리자가 마이너를 승인합니다. DXS 표준 파일명 도입은 새 산출물의 필수 사용 흐름이므로 <code>v0.9.0</code>으로 배포하며 이후 호환 개선은 다시 패치를 기본으로 합니다.</p>
         </article>
 
         <article class="card">
@@ -715,7 +719,7 @@ git tag vX.Y.Z
 git push origin main
 git push origin vX.Y.Z</code></pre>
           </div>
-          <p>커밋마다 태그를 만들지 않습니다. 일반 변경은 2~4주간 <code>Unreleased</code>에 모으고, 테스트·버전 판단·팀 업데이트 필요를 관리자가 승인한 배포 묶음에만 태그를 만듭니다. <code>main</code> 푸시는 배포 금지 검증 스냅샷만 만들고 기존 Release를 수정하지 않습니다. 태그는 <code>VERSION</code> 앞에 <code>v</code>를 붙인 값과 같아야 하며, 이미 게시한 v0.7.0 태그와 자산은 유지합니다.</p>
+          <p>커밋마다 태그를 만들지 않습니다. 일요일까지 검증된 변경을 <code>Unreleased</code>에 모아 월요일 배포 묶음으로 태그하며, 검증 완료 변경이 없는 주에는 빈 태그를 만들지 않습니다. <code>main</code> 푸시는 배포 금지 검증 스냅샷만 만들고 기존 Release를 수정하지 않습니다. 태그는 <code>VERSION</code> 앞에 <code>v</code>를 붙인 값과 같아야 하며 이미 게시한 태그와 자산은 유지합니다.</p>
         </article>
 
         <article class="card span-2">

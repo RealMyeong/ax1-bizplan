@@ -14,7 +14,8 @@ python <스킬>/scripts/build_headless_artifact.py `
   --artifact-version "v0.1" `
   --revision-note "최초 작성" `
   --revision-author "작성자" `
-  -o "산출물_AX1_v0.1.hwpx"
+  --revision-date "2026-09-02" `
+  -o "DXS-AX-REQ-AX1_요구사항정의서-20260902-v0.1.hwpx"
 ```
 
 별도 `--template`은 받지 않는다. 포함된 승인 템플릿만 사용한다.
@@ -22,7 +23,8 @@ python <스킬>/scripts/build_headless_artifact.py `
 ## 개정 이력과 파일명 버전
 
 - `--artifact-version`은 프로젝트의 현재본·외부 `산출물_버전이력.md`와 대조해 확정한 값을 사용한다. 생성기가 마지막 행만 보고 다음 버전을 추정하지 않는다.
-- 출력 파일명은 끝에 버전 접미사 하나만 두고 개정 이력 버전과 정확히 같게 한다. 예: `요구사항정의서_v0.1.hwpx`.
+- 출력 파일명은 `DXS-[사업코드]-[문서유형]-[파일제목]-[YYYYMMDD]-vX.Y.hwpx`를 사용한다. 파일명 날짜와 버전은 개정 이력 최신 일자·버전과 정확히 같게 한다. 예: `DXS-AX-REQ-AX1_요구사항정의서-20260902-v0.1.hwpx`.
+- 문서유형은 `STD/MGT/BUD/REQ/DES/DEV/TST/DAT/RPT/EVD/SOP/MIN` 중 주 기능 하나를 사용한다. 사업코드나 문서유형이 불명확하면 팀 기준 용어사전을 확인하고 사용자에게 물으며 임의 코드를 만들지 않는다.
 - `--revision-note`의 한글은 실제 UTF-8 문자로 기록하고, 작성자가 확정된 경우에만 `--revision-author`를 같은 방식으로 입력한다. 확인자 칸은 자동 입력하지 않는다.
 - 개정 이력표가 없거나 빈 행이 없고, 기존 행이 부분 입력·중복·역순이거나 파일명이 불일치·복수 버전 토큰이면 파일을 쓰기 전에 중단한다.
 - 기존 출력 경로가 있으면 덮어쓰거나 삭제하지 않는다. 다른 새 버전 경로를 확정한 뒤 다시 실행한다.
@@ -59,7 +61,7 @@ python <스킬>/scripts/build_headless_artifact.py `
 1. `check_headless_artifact.py` 재검사
 2. 확정 한글과 HWPX 내부 XML·readback의 실제 문자 일치 검사
 3. 제목 수준과 본문 목록의 앞 공백 0·3·5·7·9개, 탭·특수 공백과 문단 왼쪽·첫 줄 들여쓰기 중복 부재 검사
-4. 개정 이력의 최신 버전·개정일자·개정내역·작성자 입력 여부와 출력 파일명 버전 일치 검사
+4. 개정 이력의 최신 버전·개정일자·개정내역·작성자 입력 여부와 DXS 파일명 날짜·버전·문서유형 코드 일치 검사
 5. upstream `hwpx`의 구조·open-safety·readback 검증
 6. `render_preview` 검토
 7. 제출 후보라면 Windows 한컴에서 전체 페이지 관찰

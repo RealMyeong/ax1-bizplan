@@ -70,6 +70,7 @@ def check(path: Path) -> list:
         if len(revision_spans) != 1:
             add("개정 이력", f"정확한 개정 이력표가 1개가 아님: {len(revision_spans)}개")
             expected_version = None
+            expected_revision_date = None
         else:
             start, end = revision_spans[0]
             analysis = H.analyze_revision_table(
@@ -80,8 +81,9 @@ def check(path: Path) -> list:
             for detail in analysis.issues:
                 add("개정 이력", detail)
             expected_version = analysis.records[-1].version if analysis.records else None
-        for detail in H.artifact_filename_issues(path, expected_version):
-            add("파일명 버전", detail)
+            expected_revision_date = analysis.records[-1].date if analysis.records else None
+        for detail in H.artifact_filename_issues(path, expected_version, expected_revision_date):
+            add("파일명 규칙", detail)
 
     # 1. 글꼴 - 불가침 표지는 템플릿 그대로 두고 생성 본문만 검사한다.
     if not malgun_ids:

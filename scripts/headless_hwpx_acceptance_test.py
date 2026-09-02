@@ -103,12 +103,12 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="ax1-headless-test-") as temp_dir:
         temp = Path(temp_dir)
         content = temp / "content.md"
-        output = temp / "output_v0.1.hwpx"
-        output2 = temp / "output-second_v0.1.hwpx"
+        output = temp / "DXS-AX-TST-AX1_경량_HWPX_수용테스트-20260902-v0.1.hwpx"
+        output2 = temp / "DXS-AX-TST-AX1_경량_HWPX_재적용-20260902-v0.1.hwpx"
         unsupported = temp / "unsupported.hwpx"
-        escaped_hangul = temp / "escaped-hangul_v0.1.hwpx"
-        bad_outline = temp / "bad-outline_v0.1.hwpx"
-        bad_outline_h4 = temp / "bad-outline-h4_v0.1.hwpx"
+        escaped_hangul = temp / "DXS-AX-TST-한글_코드표기_결함-20260902-v0.1.hwpx"
+        bad_outline = temp / "DXS-AX-TST-잘못된_개요_들여쓰기-20260902-v0.1.hwpx"
+        bad_outline_h4 = temp / "DXS-AX-TST-잘못된_사수준_들여쓰기-20260902-v0.1.hwpx"
         content.write_text(markdown, encoding="utf-8")
         revision_note = "한글 개정내역: C:\\검증\\원본\\1"
         revision_author = "테스트 작성자"
@@ -265,31 +265,51 @@ def main() -> int:
             raise AssertionError("한글 숫자 문자참조를 검사기가 탐지하지 못함")
 
         # 개정표와 파일명 버전 검사: 불일치와 복수 토큰은 각각 실패해야 한다.
-        filename_mismatch = temp / "filename-mismatch_v0.2.hwpx"
+        filename_mismatch = temp / "DXS-AX-TST-파일명_버전불일치-20260902-v0.2.hwpx"
         write_revision_variant(output, filename_mismatch, {})
-        require_issue(C.check(filename_mismatch), "파일명 버전", "다름")
+        require_issue(C.check(filename_mismatch), "파일명 규칙", "다름")
 
-        multiple_versions = temp / "multiple_v0.1_copy_v0.1.hwpx"
+        multiple_versions = temp / "DXS-AX-TST-복수_v0.1_버전-20260902-v0.1.hwpx"
         write_revision_variant(output, multiple_versions, {})
-        require_issue(C.check(multiple_versions), "파일명 버전", "단일하지 않음")
+        require_issue(C.check(multiple_versions), "파일명 규칙", "단일하지 않음")
 
-        random_like_name = temp / ".ax1-headless-fmt-v1_abc_v0.1.hwpx"
+        random_like_name = temp / "DXS-AX-TST-ax1_fmt_v1_abc-20260902-v0.1.hwpx"
         write_revision_variant(output, random_like_name, {})
         if H.artifact_filename_versions(random_like_name) != ["v0.1"]:
             raise AssertionError("임시 파일명 난수 일부를 버전 토큰으로 오인함")
         if C.check(random_like_name):
             raise AssertionError("유효한 끝 버전 앞의 일반 문자열을 잘못 거부함")
 
+        invalid_document_code = temp / "DXS-AX-XYZ-미승인_문서코드-20260902-v0.1.hwpx"
+        write_revision_variant(output, invalid_document_code, {})
+        require_issue(C.check(invalid_document_code), "파일명 규칙", "승인되지 않은 문서유형")
+
+        invalid_date = temp / "DXS-AX-TST-잘못된_날짜-20260230-v0.1.hwpx"
+        write_revision_variant(output, invalid_date, {})
+        require_issue(C.check(invalid_date), "파일명 규칙", "유효한 YYYYMMDD")
+
+        mismatched_date = temp / "DXS-AX-TST-개정일자_불일치-20260903-v0.1.hwpx"
+        write_revision_variant(output, mismatched_date, {})
+        require_issue(C.check(mismatched_date), "파일명 규칙", "개정 이력 일자")
+
+        state_word = temp / "DXS-AX-TST-요구사항_final2-20260902-v0.1.hwpx"
+        write_revision_variant(output, state_word, {})
+        require_issue(C.check(state_word), "파일명 규칙", "상태어")
+
+        legacy_name = temp / "output_v0.1.hwpx"
+        write_revision_variant(output, legacy_name, {})
+        require_issue(C.check(legacy_name), "파일명 규칙", "DXS-[사업코드]")
+
         # 부분 기록, 중복·역순 버전, 빈 행 소진을 서로 독립적으로 탐지한다.
-        partial = temp / "partial_v0.1.hwpx"
+        partial = temp / "DXS-AX-TST-부분_개정기록-20260903-v0.1.hwpx"
         write_revision_variant(output, partial, {2: ("2026-09-03", "", "", "")})
         require_issue(C.check(partial), "개정 이력", "빈 필드")
 
-        duplicate = temp / "duplicate_v0.1.hwpx"
+        duplicate = temp / "DXS-AX-TST-중복_개정기록-20260903-v0.1.hwpx"
         write_revision_variant(output, duplicate, {2: ("2026-09-03", "v0.1", "중복", "")})
         require_issue(C.check(duplicate), "개정 이력", "중복 버전")
 
-        descending = temp / "descending_v0.2.hwpx"
+        descending = temp / "DXS-AX-TST-역순_개정기록-20260904-v0.2.hwpx"
         write_revision_variant(
             output,
             descending,
@@ -300,7 +320,7 @@ def main() -> int:
         )
         require_issue(C.check(descending), "개정 이력", "커지지 않음")
 
-        saturated = temp / "saturated_v0.4.hwpx"
+        saturated = temp / "DXS-AX-TST-포화_개정기록-20260905-v0.4.hwpx"
         write_revision_variant(
             output,
             saturated,
@@ -312,14 +332,14 @@ def main() -> int:
         )
         require_issue(C.check(saturated), "개정 이력", "빈 행이 없어")
 
-        missing_revision = temp / "missing-revision_v0.1.hwpx"
+        missing_revision = temp / "DXS-AX-TST-개정표_누락-20260902-v0.1.hwpx"
         missing_entries = H.read_hwpx(output)
         missing_section = H.get_text(missing_entries, H.SECTION).replace("개정일자", "개정 일자", 1)
         H.set_text(missing_entries, H.SECTION, missing_section)
         H.write_hwpx(missing_entries, missing_revision)
         require_issue(C.check(missing_revision), "개정 이력", "1개가 아님")
 
-        bad_signature = temp / "bad-signature_v0.1.hwpx"
+        bad_signature = temp / "DXS-AX-TST-표지_시그니처_오류-20260902-v0.1.hwpx"
         signature_entries = H.read_hwpx(output)
         signature_section = (
             H.get_text(signature_entries, H.SECTION)
@@ -330,7 +350,7 @@ def main() -> int:
         H.write_hwpx(signature_entries, bad_signature)
         require_issue(C.check(bad_signature), "승인 템플릿 경계", "시그니처")
 
-        row_overflow = temp / "row-overflow_v0.1.hwpx"
+        row_overflow = temp / "DXS-AX-TST-개정표_행범위_오류-20260902-v0.1.hwpx"
         overflow_entries = H.read_hwpx(output)
         overflow_section = H.get_text(overflow_entries, H.SECTION)
         overflow_start, overflow_end, overflow_table = revision_table(overflow_section)
@@ -359,7 +379,7 @@ def main() -> int:
             raise AssertionError("과도한 rowCnt를 안전하게 거부하지 못함")
 
         # 잘못된 경로와 기존 대상은 본문이나 기존 파일을 전혀 건드리지 않고 거부한다.
-        wrong_version = temp / "wrong-version_v0.2.hwpx"
+        wrong_version = temp / "DXS-AX-TST-요청_버전불일치-20260902-v0.2.hwpx"
         try:
             B.build(
                 template,
@@ -376,7 +396,7 @@ def main() -> int:
         if wrong_version.exists():
             raise AssertionError("파일명 검증 실패 뒤 출력 파일이 남음")
 
-        multiple_target = temp / "requested_v0.1_copy_v0.1.hwpx"
+        multiple_target = temp / "DXS-AX-TST-요청_v0.1_복수버전-20260902-v0.1.hwpx"
         try:
             B.build(
                 template,
@@ -393,7 +413,7 @@ def main() -> int:
         if multiple_target.exists():
             raise AssertionError("복수 버전 토큰 검증 실패 뒤 출력 파일이 남음")
 
-        existing = temp / "existing_v0.1.hwpx"
+        existing = temp / "DXS-AX-TST-기존_출력-20260902-v0.1.hwpx"
         sentinel = b"existing-user-file"
         existing.write_bytes(sentinel)
         try:

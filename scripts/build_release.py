@@ -405,6 +405,66 @@ def validate_improvement_workflow() -> None:
     for token in ("AGENTS.md", ".changes", "PR을 생성", "민감정보 없는 예시"):
         if token not in team_guide:
             raise ValueError(f"team guide: agent-driven PR instruction missing: {token}")
+    weekly_files = (
+        "CONTRIBUTING.md",
+        "docs/team-guide.md",
+        "docs/maintainer-guide.md",
+        "docs/pr-operating-policy.md",
+        "docs/ax1-bizplan-guide.html",
+    )
+    for relative in weekly_files:
+        text = (ROOT / relative).read_text(encoding="utf-8")
+        for token in ("일요일", "월요일"):
+            if token not in text:
+                raise ValueError(f"{relative}: weekly PR/release cadence is missing: {token}")
+    for relative in ("CONTRIBUTING.md", "docs/team-guide.md", "docs/maintainer-guide.md"):
+        text = (ROOT / relative).read_text(encoding="utf-8")
+        if "팀원별" not in text and "기여자" not in text:
+            raise ValueError(f"{relative}: per-contributor release notes are missing")
+
+
+def validate_artifact_filename_policy() -> None:
+    canonical_path = ROOT / "shared" / "core" / "10-artifact-version-management.md"
+    canonical = canonical_path.read_bytes()
+    canonical_text = canonical.decode("utf-8")
+    standard = "DXS-[사업코드]-[문서유형]-[파일제목]-[YYYYMMDD]-vX.Y.[확장자]"
+    for token in (
+        standard,
+        "DXS-AX-STD-AX_통합_용어사전-20260902-v0.2.docx",
+        "PILAM6",
+        "기존 산출물은 일괄 개명하지 않음",
+        "제출기관·계약·고객",
+    ):
+        if token not in canonical_text:
+            raise ValueError(f"artifact filename policy is missing: {token}")
+    for code in ("STD", "MGT", "BUD", "REQ", "DES", "DEV", "TST", "DAT", "RPT", "EVD", "SOP", "MIN"):
+        if f"`{code}`" not in canonical_text:
+            raise ValueError(f"artifact filename policy is missing document type: {code}")
+
+    copies = {
+        "bizplan-prepare": "references/01-artifact-version-management.md",
+        "bizplan-draft": "references/10-artifact-version-management.md",
+        "bizplan-review": "references/10-artifact-version-management.md",
+        "bizplan-revise": "references/10-artifact-version-management.md",
+        "bizplan-preflight": "references/10-artifact-version-management.md",
+        "bizplan-hwpx": "references/05-artifact-version-management.md",
+        "ax1-presentation": "references/06-artifact-version-management.md",
+    }
+    for skill_name, relative in copies.items():
+        path = SKILLS_ROOT / skill_name / relative
+        if not path.is_file() or path.read_bytes() != canonical:
+            raise ValueError(f"{skill_name}: artifact filename/version policy is missing or stale")
+
+    hwpx_text = (SKILLS_ROOT / "bizplan-hwpx" / "scripts" / "headless_hwpx.py").read_text(
+        encoding="utf-8"
+    )
+    for token in ("COMPANY_CODE = \"DXS\"", "DOCUMENT_TYPE_CODES", "ARTIFACT_FILENAME_RE"):
+        if token not in hwpx_text:
+            raise ValueError(f"bizplan-hwpx: executable filename validation is missing: {token}")
+    for relative in ("README.md", "docs/team-guide.md", "docs/ax1-bizplan-guide.html"):
+        text = (ROOT / relative).read_text(encoding="utf-8")
+        if "DXS-[사업코드]-[문서유형]-[파일제목]-[YYYYMMDD]-vX.Y" not in text:
+            raise ValueError(f"{relative}: AX1 artifact filename guidance is missing")
 
 
 def validate_contributor_policy() -> None:
@@ -619,6 +679,7 @@ def validate_skills() -> dict[str, str]:
     validate_hwpx_document_routing()
     validate_installation_guides()
     validate_improvement_workflow()
+    validate_artifact_filename_policy()
     validate_contributor_policy()
     validate_headless_scripts_are_stdlib_only()
     validate_presentation_scripts_are_local_only()
@@ -681,7 +742,7 @@ def validate_packaged_hwpx_skill(version: str) -> None:
             if hashlib.sha256(packaged_template.read_bytes()).hexdigest() != packaged_manifest["sha256"]:
                 raise ValueError("individual HWPX skill ZIP template SHA-256 mismatch")
             content = root / "general-deliverable.md"
-            output = root / "general-deliverable_v0.1.hwpx"
+            output = root / "DXS-AX-DAT-데이터_수집_정의서-20260902-v0.1.hwpx"
             content.write_text(
                 "# 1. 데이터 수집 정의서\n\n"
                 "## 1.1 목적\n\n"

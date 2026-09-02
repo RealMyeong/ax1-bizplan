@@ -51,12 +51,25 @@ HANGUL_RANGES = (
 
 REVISION_HEADERS = ("개정일자", "버전", "개정내역", "작성자", "확인자")
 DOCUMENT_INFO_HEADERS = ("구분", "소속", "성명", "날짜", "서명")
-ARTIFACT_VERSION_PATTERN = r"v(?:0|[1-9]\d{0,8})(?:\.(?:0|[1-9]\d{0,8}))+"
+ARTIFACT_VERSION_PATTERN = r"v(?:0|[1-9]\d{0,8})\.(?:0|[1-9]\d{0,8})"
 MAX_ARTIFACT_VERSION_LENGTH = 64
 MAX_REVISION_TABLE_ROWS = 1000
 ARTIFACT_VERSION_RE = re.compile(rf"^{ARTIFACT_VERSION_PATTERN}$")
 ARTIFACT_FILENAME_VERSION_RE = re.compile(
     rf"(?<![0-9A-Za-z])({ARTIFACT_VERSION_PATTERN})(?![0-9A-Za-z.])",
+    re.IGNORECASE,
+)
+COMPANY_CODE = "DXS"
+DOCUMENT_TYPE_CODES = frozenset(
+    {"STD", "MGT", "BUD", "REQ", "DES", "DEV", "TST", "DAT", "RPT", "EVD", "SOP", "MIN"}
+)
+ARTIFACT_FILENAME_RE = re.compile(
+    rf"^DXS-(?P<project_code>[A-Z0-9]+)-(?P<document_type>[A-Z]{{3}})-"
+    rf"(?P<title>[^-]+)-(?P<date>\d{{8}})-(?P<version>{ARTIFACT_VERSION_PATTERN})$"
+)
+WINDOWS_FORBIDDEN_FILENAME_CHARS = frozenset('/\\:*?"<>|')
+DISALLOWED_FILENAME_STATE_RE = re.compile(
+    r"(?:^|_)(?:최종|진짜최종|final\d*|final)(?:_|$)",
     re.IGNORECASE,
 )
 KST = datetime.timezone(datetime.timedelta(hours=9))
@@ -81,7 +94,7 @@ def sha256_file(path: Path) -> str:
 
 
 def validate_artifact_version(value: str) -> str:
-    """관리 산출물 버전을 엄격한 ``v숫자.숫자...`` 형식으로 확인한다."""
+    """관리 산출물 버전을 엄격한 ``vX.Y`` 형식으로 확인한다."""
     if (
         not isinstance(value, str)
         or len(value) > MAX_ARTIFACT_VERSION_LENGTH
@@ -99,7 +112,7 @@ def version_parts(value: str) -> tuple[int, ...]:
 
 
 def compare_versions(left: str, right: str) -> int:
-    """숫자 성분을 비교한다. ``v1.0``과 ``v1.0.0``은 같은 값으로 본다."""
+    """두 ``vX.Y`` 버전의 숫자 성분을 비교한다."""
     a, b = version_parts(left), version_parts(right)
     width = max(len(a), len(b))
     a += (0,) * (width - len(a))
@@ -126,8 +139,12 @@ def artifact_filename_versions(path: Path) -> list[str]:
     return [match.group(1) for match in ARTIFACT_FILENAME_VERSION_RE.finditer(Path(path).stem)]
 
 
-def artifact_filename_issues(path: Path, expected_version: str | None = None) -> list[str]:
-    """끝의 단일 ``_v<버전>.hwpx`` 규칙 위반을 설명한다."""
+def artifact_filename_issues(
+    path: Path,
+    expected_version: str | None = None,
+    expected_revision_date: str | None = None,
+) -> list[str]:
+    """AX1 ``DXS-...-YYYYMMDD-vX.Y.hwpx`` 파일명 규칙 위반을 설명한다."""
     path = Path(path)
     issues: list[str] = []
     if path.suffix.lower() != ".hwpx":
@@ -142,18 +159,55 @@ def artifact_filename_issues(path: Path, expected_version: str | None = None) ->
     except HeadlessHwpxError:
         issues.append(f"파일명 버전 형식이 올바르지 않음: {version!r}")
         return issues
-    if not path.stem.endswith("_" + version):
-        issues.append(f"파일명이 단일 끝 접미사 _{version}.hwpx로 끝나지 않음")
+    match = ARTIFACT_FILENAME_RE.fullmatch(path.stem)
+    if match is None:
+        issues.append(
+            "파일명이 DXS-[사업코드]-[문서유형]-[파일제목]-[YYYYMMDD]-vX.Y.hwpx 형식이 아님"
+        )
+        if expected_version is not None and version != expected_version:
+            issues.append(f"파일명 버전({version})과 개정 이력 버전({expected_version})이 다름")
+        return issues
+    document_type = match.group("document_type")
+    if document_type not in DOCUMENT_TYPE_CODES:
+        issues.append(
+            f"승인되지 않은 문서유형 코드임: {document_type!r}; "
+            + ", ".join(sorted(DOCUMENT_TYPE_CODES))
+        )
+    title = match.group("title")
+    if (
+        any(ch in WINDOWS_FORBIDDEN_FILENAME_CHARS for ch in title)
+        or " " in title
+        or title.startswith("_")
+        or title.endswith("_")
+        or "__" in title
+    ):
+        issues.append("파일제목은 공백·금지문자 없이 단어를 단일 밑줄로 구분해야 함")
+    if DISALLOWED_FILENAME_STATE_RE.search(title):
+        issues.append("파일제목에 최종·진짜최종·final2 같은 상태어를 사용할 수 없음")
+    date_token = match.group("date")
+    try:
+        parsed_date = datetime.datetime.strptime(date_token, "%Y%m%d").date()
+        if parsed_date.strftime("%Y%m%d") != date_token:
+            raise ValueError(date_token)
+    except ValueError:
+        issues.append(f"파일명 날짜가 유효한 YYYYMMDD가 아님: {date_token!r}")
     if expected_version is not None and version != expected_version:
         issues.append(f"파일명 버전({version})과 개정 이력 버전({expected_version})이 다름")
+    if expected_revision_date is not None:
+        expected_date = normalize_revision_date(expected_revision_date).replace("-", "")
+        if date_token != expected_date:
+            issues.append(
+                f"파일명 날짜({date_token})와 개정 이력 일자({expected_revision_date})가 다름"
+            )
     return issues
 
 
-def require_new_artifact_output(path: Path, version: str) -> Path:
+def require_new_artifact_output(path: Path, version: str, revision_date: str) -> Path:
     """출력 이름과 미존재 조건을 쓰기 전에 검증한다."""
     path = Path(path)
     version = validate_artifact_version(version)
-    issues = artifact_filename_issues(path, version)
+    revision_date = normalize_revision_date(revision_date)
+    issues = artifact_filename_issues(path, version, revision_date)
     if issues:
         raise HeadlessHwpxError("출력 파일명 규칙 위반: " + "; ".join(issues))
     if os.path.lexists(path):

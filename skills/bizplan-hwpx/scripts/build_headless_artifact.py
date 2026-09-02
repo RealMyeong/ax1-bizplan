@@ -1,6 +1,6 @@
 """승인된 AX1 표지 양식에 확정 본문을 채워 HWPX를 만든다.
 
-    python build_headless_artifact.py --content <본문.md> -o <출력_v0.1.hwpx> [표지 정보]
+    python build_headless_artifact.py --content <본문.md> -o <DXS-사업코드-문서유형-파일제목-YYYYMMDD-v0.1.hwpx> [표지 정보]
 
 양식의 표지~목차 제목은 손대지 않고 그 뒤에 목차 항목과 본문을 이어붙인 뒤,
 서식 규칙을 적용한다. 마크다운 앞부분의 표지·문서정보·개정이력·목차는 양식이
@@ -598,7 +598,7 @@ def build(
         raise H.HeadlessHwpxError("개정내역은 비어 있을 수 없음")
     if not isinstance(revision_author, str):
         raise H.HeadlessHwpxError("개정 작성자는 문자열이어야 함")
-    out = H.require_new_artifact_output(Path(out), artifact_version)
+    out = H.require_new_artifact_output(Path(out), artifact_version, revision_date)
     template = Path(template)
     approved = default_template()
     if template.resolve() != approved.resolve():
@@ -712,7 +712,7 @@ def build(
     build_error = None
     try:
         raw_path = temp_root / f"raw_{artifact_version}.hwpx"
-        fmt_path = temp_root / f"formatted_{artifact_version}.hwpx"
+        fmt_path = temp_root / out.name
         H.write_hwpx(entries, raw_path)
         log.append("승인 양식 뒤에 본문 삽입 완료")
         log.append("--- 경량 서식 적용 ---")

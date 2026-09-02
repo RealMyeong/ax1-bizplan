@@ -54,7 +54,7 @@ KPI 프레임워크, 사업 구체화, 평가위원 관점과 PI-LAM 프로파�
 | `05-evaluator-lens.md` | draft, review, revise, preflight, evidence-update | `P` | 동일 PI-LAM 사업 평가자료에서 도출된 프로파일 수준 렌즈 | `shared/core/`에서 프로파일·근거 계층으로 이동할 후보 |
 | `06-evidence-update-policy.md` | evidence-update | 혼합 `D+O` | 근거등급·승격은 재사용 가능하나 현재 용어와 결과가 사업계획서 스킬 고도화에 특화 | AX1 공통 근거 거버넌스와 사업계획서 근거 업데이트 절차를 단계적으로 분리 |
 | `07-artifact-workflow.md` | draft, review, revise, preflight | 혼합 `C1+F` | 원본 보존·수정본·시각 검증은 범용이나 HWPX 라우팅이 `bizplan-hwpx`에 고정 | 범용 파일 워크플로와 형식 엔진 라우팅을 분리 |
-| `10-artifact-version-management.md` | prepare, draft, hwpx, review, revise, preflight | 혼합 `C1+D` | 버전 묶음·검증 후 승격·복구는 범용이나 `08/09/10/98/99` 경로는 현재 사업계획서 작업공간 프로파일 | 불변 규칙과 작업공간별 경로 프로파일을 분리 |
+| `10-artifact-version-management.md` | prepare, draft, hwpx, review, revise, preflight, presentation | 혼합 `C1+D+F` | DXS 파일명·코드 확인, 버전 묶음·검증 후 승격·복구는 범용이나 `08/09/10/98/99` 경로는 현재 사업계획서 작업공간 프로파일 | 파일명·코드 기준, 버전 불변 규칙과 작업공간별 경로 프로파일을 분리 |
 | `11-artifact-synchronization.md` | prepare, draft, hwpx, review, revise, preflight | 혼합 `C1+D` | 변경 집합·기준 원천·원자 승격은 범용이나 KPI·예산·기관·실증 필드는 사업계획서 영향 스키마 | 범용 연동 트랜잭션과 업무별 의미 필드를 분리 |
 | `12-user-confirmation-gate.md` | 전체 8개 스킬 | `C0` | 도구 호출 전 별도 회차 확인과 재확인·후속 승인 경계를 정의 | AX1 필수 공통 기준 원본으로 유지 |
 
@@ -126,6 +126,8 @@ KPI 프레임워크, 사업 구체화, 평가위원 관점과 PI-LAM 프로파�
 
 적용 조건은 관리 산출물의 새 버전이 생기고 현재본을 바꿔야 하는 경우다.
 
+- 제출처·고객 필수 이름이 없으면 `DXS-[사업코드]-[문서유형]-[파일제목]-[YYYYMMDD]-vX.Y.[확장자]`를 적용하고 승인 코드가 불명확하면 사용자에게 확인
+- 기존 파일은 일괄 개명하지 않고 다음 정식 개정에서 전환하며 이전 이름을 이력에 기록
 - 산출물군과 버전 묶음 식별
 - 새 후보 선생성·선검증
 - 복구 명세 작성

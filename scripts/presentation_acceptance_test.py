@@ -17,6 +17,33 @@ ROOT = Path(__file__).resolve().parents[1]
 SKILL_SCRIPTS = ROOT / "skills" / "ax1-presentation" / "scripts"
 
 
+def validate_image_first_contract() -> None:
+    skill_root = ROOT / "skills" / "ax1-presentation"
+    documents = {
+        "SKILL.md": (skill_root / "SKILL.md").read_text(encoding="utf-8"),
+        "workflow": (skill_root / "references" / "01-presentation-workflow.md").read_text(
+            encoding="utf-8"
+        ),
+        "image-mode": (skill_root / "references" / "03-image-deck-mode.md").read_text(
+            encoding="utf-8"
+        ),
+        "openai.yaml": (skill_root / "agents" / "openai.yaml").read_text(encoding="utf-8"),
+    }
+    for label in ("SKILL.md", "workflow", "image-mode"):
+        content = documents[label]
+        if "전체 슬라이드 이미지" not in content or "기본" not in content:
+            raise AssertionError(f"{label}: 이미지형 기본 경로가 누락됨")
+    if "전체 슬라이드 이미지형 PPTX" not in documents["openai.yaml"]:
+        raise AssertionError("openai.yaml: 이미지형 기본 요청이 누락됨")
+    if "staged-storyboard-image-first-presentation" not in documents["SKILL.md"]:
+        raise AssertionError("SKILL.md: image-first 아키텍처 식별자가 누락됨")
+    if (
+        "개별 요소 편집" not in documents["openai.yaml"]
+        or "네이티브 모드" not in documents["openai.yaml"]
+    ):
+        raise AssertionError("openai.yaml: 명시적 편집 요청의 네이티브 전환 안내가 누락됨")
+
+
 def run(arguments: list[str], *, expected: int = 0) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(
         [sys.executable, *arguments],
@@ -35,6 +62,7 @@ def run(arguments: list[str], *, expected: int = 0) -> subprocess.CompletedProce
 
 
 def main() -> int:
+    validate_image_first_contract()
     assembler = str(SKILL_SCRIPTS / "assemble_image_deck.py")
     checker = str(SKILL_SCRIPTS / "check_presentation.py")
     with tempfile.TemporaryDirectory(prefix="ax1-presentation-") as temporary:

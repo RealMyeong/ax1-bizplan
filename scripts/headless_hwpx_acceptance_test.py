@@ -86,6 +86,10 @@ def top_level_paragraphs(section: str) -> list[dict]:
 
 
 def main() -> int:
+    if H.HEADING_TOP_SPACING != 1200:
+        raise AssertionError(
+            f"제목 위 간격 상수는 12pt(1200 HWPUNIT)여야 함: {H.HEADING_TOP_SPACING}"
+        )
     template = H.approved_template(SKILL)
     template_before = digest(template)
     markdown = """# 1. 사업 개요
@@ -137,7 +141,10 @@ def main() -> int:
         unsupported = temp / "unsupported.hwpx"
         escaped_hangul = temp / "DXS-AX-TST-한글_코드표기_결함-20260902-v0.1.hwpx"
         bad_outline = temp / "DXS-AX-TST-잘못된_개요_들여쓰기-20260902-v0.1.hwpx"
-        bad_outline_h4 = temp / "DXS-AX-TST-잘못된_사수준_들여쓰기-20260902-v0.1.hwpx"
+        bad_outline_depth = temp / "DXS-AX-TST-잘못된_사수준_제목-20260902-v0.1.hwpx"
+        bad_heading_style = temp / "DXS-AX-TST-잘못된_제목스타일-20260902-v0.1.hwpx"
+        bad_table_axis_align = temp / "DXS-AX-TST-잘못된_표축맞춤-20260902-v0.1.hwpx"
+        bad_table_body_align = temp / "DXS-AX-TST-잘못된_표내용맞춤-20260902-v0.1.hwpx"
         bad_heading_gap = temp / "DXS-AX-TST-잘못된_제목위간격-20260902-v0.1.hwpx"
         bad_list_indent = temp / "DXS-AX-TST-잘못된_목록들여쓰기-20260902-v0.1.hwpx"
         bad_list_lineseg = temp / "DXS-AX-TST-잘못된_목록줄배치-20260902-v0.1.hwpx"
@@ -222,7 +229,6 @@ def main() -> int:
             "1. 사업 개요": heading_styles["개요 1"],
             "   1.1 구현 방식": heading_styles["개요 2"],
             "     1.1.1 세부 검증": heading_styles["개요 3"],
-            "       1.1.1.1 사수준 제목": heading_styles["개요 4"],
             "   1.2 목록 뒤 제목": heading_styles["개요 2"],
             "   1.3 표 뒤 제목": heading_styles["개요 2"],
             "     1.3.1 연속 제목": heading_styles["개요 3"],
@@ -237,7 +243,6 @@ def main() -> int:
                 "1. 사업 개요",
                 "   1.1 구현 방식",
                 "     1.1.1 세부 검증",
-                "       1.1.1.1 사수준 제목",
                 "   1.2 목록 뒤 제목",
                 "   1.3 표 뒤 제목",
                 "     1.3.1 연속 제목",
@@ -257,18 +262,18 @@ def main() -> int:
             "1. 사업 개요",
             "   1.1 구현 방식",
             "     1.1.1 세부 검증",
-            "       1.1.1.1 사수준 제목",
             "   1.2 목록 뒤 제목",
             "   1.3 표 뒤 제목",
             "     1.3.1 연속 제목",
             "2. 새 쪽 제목",
+            "• 사수준 제목",
             "• 본문 목록으로 전환할 항목",
             "• 표준 라이브러리만 사용",
         ):
             if expected not in paragraph_texts:
                 raise AssertionError(f"개요 수준 앞 공백 보존 실패: {expected!r}")
-        if any("1.1.1.1.1" in text for text in paragraph_texts):
-            raise AssertionError("5단계 숫자 제목이 본문 목록으로 전환되지 않음")
+        if any("1.1.1.1" in text for text in paragraph_texts):
+            raise AssertionError("4단계 이상 숫자 제목이 본문 목록으로 전환되지 않음")
 
         top_level = top_level_paragraphs(section)
         by_text = {paragraph["text"]: paragraph for paragraph in top_level if paragraph["text"]}
@@ -292,7 +297,7 @@ def main() -> int:
             raise AssertionError("수준 1 새 쪽 시작 동작 또는 위 간격이 변경됨")
 
         list_paragraphs = [paragraph for paragraph in top_level if paragraph["text"].startswith("• ")]
-        if len(list_paragraphs) < 4:
+        if len(list_paragraphs) < 5:
             raise AssertionError("합성 목록 문단을 모두 찾지 못함")
         for paragraph in list_paragraphs:
             pid = H.re.search(r'paraPrIDRef="(\d+)"', paragraph["attrs"]).group(1)
@@ -318,6 +323,37 @@ def main() -> int:
             raise AssertionError(f"글머리표 후속 줄이 본문 시작 위치에 맞지 않음: {line_positions!r}")
         if "##############################" in section:
             raise AssertionError("사용자 검토 마커가 생성 결과에 남음")
+
+        body_start = H.body_start_offset(section)
+        body_tables = [
+            section[start:end]
+            for start, end in H.table_spans(section)
+            if body_start is not None and start >= body_start
+        ]
+        if len(body_tables) != 1:
+            raise AssertionError(f"합성 본문 표 식별 실패: {len(body_tables)}개")
+        body_table = body_tables[0]
+        table_cells = H.cells(body_table)
+        axis_cells = [cell for cell in table_cells if cell.row == 0 or cell.col == 0]
+        content_cells = [cell for cell in table_cells if cell.row > 0 and cell.col > 0]
+        if not axis_cells or not content_cells:
+            raise AssertionError("표 1행·1열 또는 내용 셀을 찾지 못함")
+        for cell in axis_cells:
+            aligns = {para_prs[pid]["align"] for pid in cell.para_ids}
+            if aligns != {H.TABLE_AXIS_HORIZONTAL_ALIGN}:
+                raise AssertionError(
+                    f"표 1행·1열 가로 맞춤 불일치: r{cell.row}c{cell.col} / {aligns!r}"
+                )
+            if cell.vert_align != H.TABLE_AXIS_VERTICAL_ALIGN:
+                raise AssertionError(
+                    f"표 1행·1열 세로 맞춤 불일치: r{cell.row}c{cell.col} / {cell.vert_align}"
+                )
+        for cell in content_cells:
+            aligns = {para_prs[pid]["align"] for pid in cell.para_ids}
+            if aligns != {H.TABLE_BODY_HORIZONTAL_ALIGN}:
+                raise AssertionError(
+                    f"표 내용 셀 가로 맞춤 불일치: r{cell.row}c{cell.col} / {aligns!r}"
+                )
 
         original_malgun = H.MALGUN
         original_malgun_bold = H.MALGUN_BOLD
@@ -392,17 +428,67 @@ def main() -> int:
         if not any(issue["rule"] == "개요 수준 들여쓰기" for issue in bad_outline_issues):
             raise AssertionError("잘못된 제목 앞 공백을 검사기가 탐지하지 못함")
 
-        bad_h4_entries = H.read_hwpx(output)
-        bad_h4_section = H.get_text(bad_h4_entries, H.SECTION).replace(
-            "       1.1.1.1 사수준 제목",
-            "      1.1.1.1 사수준 제목",
+        bad_depth_entries = H.read_hwpx(output)
+        bad_depth_section = H.get_text(bad_depth_entries, H.SECTION).replace(
+            "     1.1.1 세부 검증",
+            "     1.1.1.1 세부 검증",
             1,
         )
-        H.set_text(bad_h4_entries, H.SECTION, bad_h4_section)
-        H.write_hwpx(bad_h4_entries, bad_outline_h4)
-        bad_h4_issues = C.check(bad_outline_h4)
-        if not any(issue["rule"] == "개요 수준 들여쓰기" for issue in bad_h4_issues):
-            raise AssertionError("잘못된 4수준 제목 앞 공백을 검사기가 탐지하지 못함")
+        H.set_text(bad_depth_entries, H.SECTION, bad_depth_section)
+        H.write_hwpx(bad_depth_entries, bad_outline_depth)
+        require_issue(C.check(bad_outline_depth), "개요 수준", "3단계를 초과")
+
+        style_entries = H.read_hwpx(output)
+        style_section = H.get_text(style_entries, H.SECTION)
+        style_paragraph = by_text["   1.1 구현 방식"]
+        style_open = f'<hp:p {style_paragraph["attrs"]}>'
+        wrong_style_open = H.re.sub(
+            r'styleIDRef="\d+"',
+            f'styleIDRef="{heading_styles["개요 1"]}"',
+            style_open,
+            count=1,
+        )
+        style_section = style_section.replace(style_open, wrong_style_open, 1)
+        H.set_text(style_entries, H.SECTION, style_section)
+        H.write_hwpx(style_entries, bad_heading_style)
+        require_issue(C.check(bad_heading_style), "개요 수준 스타일", "개요 2")
+
+        axis_target = next(cell for cell in axis_cells if cell.row == 1 and cell.col == 0)
+        content_target = next(cell for cell in content_cells if cell.row == 1 and cell.col == 1)
+        axis_pid = axis_target.para_ids[0]
+        content_pid = content_target.para_ids[0]
+
+        axis_entries = H.read_hwpx(output)
+        axis_section = H.get_text(axis_entries, H.SECTION)
+        axis_inner = axis_target.inner.replace(
+            f'paraPrIDRef="{axis_pid}"',
+            f'paraPrIDRef="{content_pid}"',
+            1,
+        ).replace(
+            f'vertAlign="{H.TABLE_AXIS_VERTICAL_ALIGN}"',
+            'vertAlign="TOP"',
+            1,
+        )
+        if axis_inner == axis_target.inner:
+            raise AssertionError("표 1열 맞춤 결함 주입에 실패함")
+        axis_section = axis_section.replace(axis_target.inner, axis_inner, 1)
+        H.set_text(axis_entries, H.SECTION, axis_section)
+        H.write_hwpx(axis_entries, bad_table_axis_align)
+        require_issue(C.check(bad_table_axis_align), "표 축 셀 맞춤", "1행·1열 셀")
+
+        content_entries = H.read_hwpx(output)
+        content_section = H.get_text(content_entries, H.SECTION)
+        content_inner = content_target.inner.replace(
+            f'paraPrIDRef="{content_pid}"',
+            f'paraPrIDRef="{axis_pid}"',
+            1,
+        )
+        if content_inner == content_target.inner:
+            raise AssertionError("표 내용 셀 맞춤 결함 주입에 실패함")
+        content_section = content_section.replace(content_target.inner, content_inner, 1)
+        H.set_text(content_entries, H.SECTION, content_section)
+        H.write_hwpx(content_entries, bad_table_body_align)
+        require_issue(C.check(bad_table_body_align), "표 내용 셀 맞춤", "가로 왼쪽")
 
         encoded_entries = H.read_hwpx(output)
         encoded_section = H.get_text(encoded_entries, H.SECTION).replace(

@@ -162,7 +162,7 @@ def check(path: Path) -> list:
 
     # 3-1. 숫자 제목은 실제 U+0020 앞 공백으로 표현한다. 본문 목록은 실제 줄바꿈에
     # 대응하도록 텍스트 앞 공백 없이 문단 왼쪽 들여쓰기+첫 줄 내어쓰기를 사용한다.
-    outline_spaces = {1500: 0, 1200: 3}
+    heading_levels_by_height = {1500: 1, 1200: 2, 1050: 3}
     heading_styles = H.style_ids_by_name(header)
     top_level = []
     width_match = H.re.search(
@@ -198,20 +198,21 @@ def check(path: Path) -> list:
         if not text:
             continue
         char_pr = char_prs.get(run_match.group(1))
-        expected = outline_spaces.get(char_pr.height) if char_pr and char_pr.bold else None
-        heading_level = {1500: 1, 1200: 2}.get(char_pr.height) if char_pr and char_pr.bold else None
+        heading_level = (
+            heading_levels_by_height.get(char_pr.height)
+            if char_pr and char_pr.bold
+            else None
+        )
+        expected = H.HEADING_PREFIX_SPACES.get(heading_level)
         stripped = text.lstrip()
-        if char_pr and char_pr.bold and char_pr.height == 1050:
-            number = H.re.match(r"^(\d+(?:\.\d+){0,3})\.?\s+", stripped)
-            number_depth = number.group(1).count(".") + 1 if number else None
-            if number_depth == 4 or (number_depth is None and text.startswith(" " * 7)):
-                expected = 7
-                heading_level = 4
-            else:
-                expected = 5
-                heading_level = 3
-        if char_pr and char_pr.bold and H.re.match(r"^\d+(?:\.\d+){4,}\.?\s+", stripped):
-            add("개요 수준", f"숫자 제목이 허용된 4단계를 초과함 :: {stripped[:34]!r}")
+        if char_pr and char_pr.bold and H.re.match(
+            rf"^\d+(?:\.\d+){{{H.MAX_HEADING_LEVEL},}}\.?\s+",
+            stripped,
+        ):
+            add(
+                "개요 수준",
+                f"숫자 제목이 허용된 {H.MAX_HEADING_LEVEL}단계를 초과함 :: {stripped[:34]!r}",
+            )
         pid = pid_match.group(1) if pid_match else None
         if heading_level:
             if text != " " * expected + stripped:
@@ -289,7 +290,7 @@ def check(path: Path) -> list:
             add("검토 마커", "파란색 검토용 # 마커 문단이 생성 본문에 남음")
         top_level.append({"kind": "body", "level": None, "pid": pid, "attrs": attrs, "text": text})
 
-    # 본문·목록·표 뒤의 수준 2~4 제목만 공통 윗간격을 사용한다. 연속 제목과
+    # 본문·목록·표 뒤의 수준 2~3 제목만 공통 윗간격을 사용한다. 연속 제목과
     # 페이지 첫 제목에는 간격을 만들지 않고 수준 1의 새 쪽 동작을 유지한다.
     for index, paragraph in enumerate(top_level):
         if paragraph["kind"] != "heading" or not paragraph["pid"]:
@@ -299,7 +300,7 @@ def check(path: Path) -> list:
         previous_kind = top_level[index - 1]["kind"] if index else None
         expected_prev = (
             H.HEADING_TOP_SPACING
-            if level in {2, 3, 4} and previous_kind in {"body", "list", "table"}
+            if level in {2, 3} and previous_kind in {"body", "list", "table"}
             else 0
         )
         if props.get("prev") != expected_prev:
@@ -365,32 +366,58 @@ def check(path: Path) -> list:
                 f"글자 폭이 배치된 줄 용량의 {total / capacity:.1f}배 :: {text[:34]}",
             )
 
-    # 5. 표 머리행 - 음영 / 세로 중간 / 가로 가운데, 6. 열 너비
+    # 5. 표 - 1행 음영, 1행·1열 가로/세로 중앙, 나머지 셀 가로 왼쪽
+    # 6. 열 너비
     for tno, tbl in enumerate(H.tables(section), start=1):
         offset = spans[tno - 1][0]
         if offset < body_start:
             continue
-        if H.is_label_column_table(tbl, shaded_ids):
-            continue  # 라벨열 표는 머리행이 없다
-
-        head_cells = sorted((c for c in H.cells(tbl) if c.row == 0), key=lambda c: c.col)
+        table_cells = H.cells(tbl)
+        label_col = H.is_label_column_table(tbl, shaded_ids)
+        head_cells = sorted((c for c in table_cells if c.row == 0), key=lambda c: c.col)
         if not head_cells:
             continue
-        if any(c.fill not in fill_ids for c in head_cells):
-            add("표 머리행 색", f"1행 배경이 {H.HEADER_FILL} 이 아님", f"표 {tno}")
-        elif any(c.fill in front_fills for c in head_cells):
-            add(
-                "표 머리행 색",
-                f"표지~목차와 borderFill 을 공유함. 본문 색을 바꾸면 양식까지 바뀜",
-                f"표 {tno}",
-            )
-        if any(c.vert_align != "CENTER" for c in head_cells):
-            add("표 머리행 맞춤", "1행이 세로 중간이 아님", f"표 {tno}")
-        aligns = {para_prs.get(p, {}).get("align") for c in head_cells for p in c.para_ids}
-        if aligns - {"CENTER"}:
-            add("표 머리행 맞춤", f"1행이 가로 가운데가 아님 ({', '.join(sorted(str(a) for a in aligns))})", f"표 {tno}")
+        if not label_col:
+            if any(c.fill not in fill_ids for c in head_cells):
+                add("표 머리행 색", f"1행 배경이 {H.HEADER_FILL} 이 아님", f"표 {tno}")
+            elif any(c.fill in front_fills for c in head_cells):
+                add(
+                    "표 머리행 색",
+                    "표지~목차와 borderFill 을 공유함. 본문 색을 바꾸면 양식까지 바뀜",
+                    f"표 {tno}",
+                )
 
-        for c in H.cells(tbl):
+        axis_cells = [cell for cell in table_cells if cell.row == 0 or cell.col == 0]
+        for cell in axis_cells:
+            if cell.vert_align != H.TABLE_AXIS_VERTICAL_ALIGN:
+                add(
+                    "표 축 셀 맞춤",
+                    f"1행·1열 셀이 세로 중앙이 아님 ({cell.vert_align})",
+                    f"표 {tno} r{cell.row}c{cell.col}",
+                )
+            aligns = [para_prs.get(pid, {}).get("align") for pid in cell.para_ids]
+            if not aligns or any(
+                align != H.TABLE_AXIS_HORIZONTAL_ALIGN for align in aligns
+            ):
+                add(
+                    "표 축 셀 맞춤",
+                    f"1행·1열 셀이 가로 가운데가 아님 ({aligns})",
+                    f"표 {tno} r{cell.row}c{cell.col}",
+                )
+
+        body_cells = [cell for cell in table_cells if cell.row > 0 and cell.col > 0]
+        for cell in body_cells:
+            aligns = [para_prs.get(pid, {}).get("align") for pid in cell.para_ids]
+            if not aligns or any(
+                align != H.TABLE_BODY_HORIZONTAL_ALIGN for align in aligns
+            ):
+                add(
+                    "표 내용 셀 맞춤",
+                    f"1행·1열 외 셀이 가로 왼쪽이 아님 ({aligns})",
+                    f"표 {tno} r{cell.row}c{cell.col}",
+                )
+
+        for c in table_cells:
             if c.colspan != 1:
                 continue
             for cid, text in c.runs():

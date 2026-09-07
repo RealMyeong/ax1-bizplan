@@ -789,7 +789,10 @@ def validate_packaged_hwpx_skill(version: str) -> None:
                 "## 1.1 목적\n\n"
                 "### 1.1.1 처리 절차\n\n"
                 "#### 1.1.1.1 검증 기준\n\n"
-                "- ☑ 한글 산출물 검증\n",
+                "- ☑ 한글 산출물 검증\n\n"
+                "| 구분 | 내용 |\n"
+                "|---|---|\n"
+                "| 상태 | 정상 |\n",
                 encoding="utf-8",
             )
             build = subprocess.run(
@@ -840,8 +843,10 @@ def validate_packaged_hwpx_skill(version: str) -> None:
                 "v0.1",
                 "최초 작성",
                 "테스트 작성자",
-                "       1.1.1.1 검증 기준",
+                "• 검증 기준",
                 "• ☑ 한글 산출물 검증",
+                "구분",
+                "정상",
             ):
                 if token not in readback:
                     raise ValueError(f"individual HWPX skill ZIP readback missing: {token}")

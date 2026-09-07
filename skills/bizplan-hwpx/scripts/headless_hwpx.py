@@ -29,8 +29,13 @@ HEADER_FILL = "#D9D9D9"
 BODY_LINE_SPACING = 160
 CELL_LINE_SPACING = 160  # 표 셀도 본문과 같은 160%
 BODY_TEXT_HEIGHT = 1000  # 10pt. HWPUNIT = pt * 100
-# 수준 2~4 제목은 본문·목록·표 뒤에서만 6pt 윗간격을 사용한다.
-HEADING_TOP_SPACING = 600
+MAX_HEADING_LEVEL = 3
+HEADING_PREFIX_SPACES = {1: 0, 2: 3, 3: 5}
+# 수준 2~3 제목은 본문·목록·표 뒤에서만 12pt 윗간격을 사용한다.
+HEADING_TOP_SPACING = 1200
+TABLE_AXIS_HORIZONTAL_ALIGN = "CENTER"
+TABLE_AXIS_VERTICAL_ALIGN = "CENTER"
+TABLE_BODY_HORIZONTAL_ALIGN = "LEFT"
 # 목록은 텍스트 앞 공백 대신 문단 왼쪽 들여쓰기와 첫 줄 내어쓰기를 사용한다.
 # 10pt 맑은 고딕의 "• " 폭(약 769 HWPUNIT)에 맞춘 안정적인 반올림 값이다.
 BODY_LIST_LEFT_INDENT = 4000

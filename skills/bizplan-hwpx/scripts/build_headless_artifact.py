@@ -7,7 +7,8 @@
 이미 갖고 있으므로 건너뛴다.
 
 지원하는 마크다운
-    #/##/###/####   장·절·항·세부항 제목   | ... |   표 (첫 줄이 머리행)
+    #/##/###   장·절·항 제목   | ... |   표 (첫 줄이 머리행)
+    #### 이상  본문 목록으로 전환
     빈 줄 구분  본문 문단          -, *     리스트
     1. 2. 3.   번호 목록 (번호를 글자로 남기고 각각 별개 문단)
 표준 라이브러리만 사용하며 한컴오피스·COM 창을 실행하지 않는다. 임의 템플릿은
@@ -30,9 +31,9 @@ import format_headless_artifact as A  # noqa: E402
 import check_headless_artifact as C  # noqa: E402
 
 # 제목 계층 (references/08-headless-format-rules.md 의 글자 크기 계층과 같아야 함)
-HEADING_HEIGHT = {1: 1500, 2: 1200, 3: 1050, 4: 1050}
-HEADING_STYLE = {1: "개요 1", 2: "개요 2", 3: "개요 3", 4: "개요 4"}
-OUTLINE_PREFIX_SPACES = {1: 0, 2: 3, 3: 5, 4: 7}
+HEADING_HEIGHT = {1: 1500, 2: 1200, 3: 1050}
+HEADING_STYLE = {1: "개요 1", 2: "개요 2", 3: "개요 3"}
+OUTLINE_PREFIX_SPACES = H.HEADING_PREFIX_SPACES
 TABLE_OUT_MARGIN = 283
 CELL_MARGIN = (510, 510, 141, 141)  # left right top bottom
 MIN_COL_WIDTH = 3000
@@ -103,10 +104,14 @@ def parse_markdown(text: str) -> list:
             flush()
             level = len(m.group(1))
             heading_text = strip_inline(m.group(2))
-            if level <= 4:
+            if level <= H.MAX_HEADING_LEVEL:
                 blocks.append(("h", level, heading_text))
             else:
-                heading_text = re.sub(r"^\d+(?:\.\d+){4,}\.?\s+", "", heading_text)
+                heading_text = re.sub(
+                    rf"^\d+(?:\.\d+){{{H.MAX_HEADING_LEVEL},}}\.?\s+",
+                    "",
+                    heading_text,
+                )
                 blocks.append(("li", 1, heading_text))
             i += 1
             continue
@@ -210,7 +215,13 @@ class StylePool:
         self.new_chars.append(block)
         return new_id
 
-    def para_format(self, left: int = 0, intent: int = 0, prev: int = 0) -> str:
+    def para_format(
+        self,
+        left: int = 0,
+        intent: int = 0,
+        prev: int = 0,
+        align: str | None = None,
+    ) -> str:
         """Return a paragraph style with canonical HwpUnitChar margin values.
 
         The approved template stores the fallback margin branch at twice the
@@ -234,6 +245,12 @@ class StylePool:
             return margin
 
         block = re.sub(r'<hh:margin>.*?</hh:margin>', replace_margin, block, flags=re.S)
+        if align is not None:
+            block = re.sub(
+                r'(<hh:align horizontal=")\w+(")',
+                lambda match: match.group(1) + align + match.group(2),
+                block,
+            )
         want = self._strip(block, "paraPr")
         for pid, existing in self.paras.items():
             if self._strip(existing, "paraPr") == want:
@@ -327,7 +344,7 @@ class Emitter:
     def heading(self, level: int, text: str, add_top_spacing: bool = False) -> str:
         height = HEADING_HEIGHT[level]
         text = " " * OUTLINE_PREFIX_SPACES[level] + text.lstrip()
-        prev = H.HEADING_TOP_SPACING if level in {2, 3, 4} and add_top_spacing else 0
+        prev = H.HEADING_TOP_SPACING if level in {2, 3} and add_top_spacing else 0
         return self.para(
             text, self.pool.para_format(prev=prev), self.pool.char(height, True), height,
             page_break=(level == 1), bold=True,
@@ -387,9 +404,14 @@ class Emitter:
             total_h += row_h
             tcs = []
             for c_i, cell in enumerate(row):
+                is_axis = is_head or c_i == 0
                 inner = self.para(
                     cell,
-                    self.pool.center_para if is_head else self.pool.base_para,
+                    (
+                        self.pool.center_para
+                        if is_axis
+                        else self.pool.para_format(align=H.TABLE_BODY_HORIZONTAL_ALIGN)
+                    ),
                     head_char if is_head else body_char,
                     H.BODY_TEXT_HEIGHT,
                     horzsize=widths[c_i] - pad - 2,
@@ -398,7 +420,8 @@ class Emitter:
                 tcs.append(
                     f'<hp:tc name="" header="{TABLE_REPEAT_HEADER if is_head else 0}" hasMargin="0" protect="0"'
                     f' editable="0" dirty="0" borderFillIDRef="{self.plain_fill}">'
-                    f'<hp:subList id="" textDirection="HORIZONTAL" lineWrap="BREAK" vertAlign="CENTER"'
+                    f'<hp:subList id="" textDirection="HORIZONTAL" lineWrap="BREAK"'
+                    f' vertAlign="{H.TABLE_AXIS_VERTICAL_ALIGN}"'
                     f' linkListIDRef="0" linkListNextIDRef="0" textWidth="0" textHeight="0"'
                     f' hasTextRef="0" hasNumRef="0">{inner}</hp:subList>'
                     f'<hp:cellAddr colAddr="{c_i}" rowAddr="{r_i}"/>'
@@ -691,7 +714,7 @@ def build(
     previous_kind = None
     for block in blocks:
         if block[0] == "h":
-            add_top_spacing = block[1] in {2, 3, 4} and previous_kind in {"p", "li", "table"}
+            add_top_spacing = block[1] in {2, 3} and previous_kind in {"p", "li", "table"}
             parts.append(emitter.heading(block[1], block[2], add_top_spacing))
         elif block[0] == "p":
             parts.append(emitter.body(block[1]))
@@ -700,7 +723,7 @@ def build(
         elif block[0] == "table":
             parts.append(emitter.table(block[1], regular, boldfont))
         previous_kind = block[0]
-    log.append(f"본문·목록·표 뒤 수준 2~4 제목 윗간격 {H.HEADING_TOP_SPACING} HWPUNIT 적용")
+    log.append(f"본문·목록·표 뒤 수준 2~3 제목 윗간격 {H.HEADING_TOP_SPACING} HWPUNIT 적용")
     log.append(
         "본문 목록 hanging indent 적용: "
         f"왼쪽 {H.BODY_LIST_LEFT_INDENT}, 첫 줄 {H.BODY_LIST_FIRST_LINE_INDENT}, "

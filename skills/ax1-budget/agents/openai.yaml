@@ -1,0 +1,6 @@
+interface:
+  display_name: "AX1 사업비 관리대장"
+  short_description: "공통 XLSX 양식으로 사업비·구매·집행 관리대장 작성과 갱신"
+  default_prompt: "$ax1-budget을 사용해 승인예산과 구매자료를 공통 양식의 사업비 관리대장에 반영하고 수식·집계·서식을 검증해줘."
+policy:
+  allow_implicit_invocation: true

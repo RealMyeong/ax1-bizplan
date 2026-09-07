@@ -54,6 +54,7 @@ ALL_SKILLS = (
     "bizplan-hwpx",
     "bizplan-evidence-update",
     "ax1-presentation",
+    "ax1-budget",
 )
 
 INSTALLATION_GUIDES = (
@@ -64,6 +65,7 @@ INSTALLATION_GUIDES = (
 
 APPROVED_HWPX_ASSET = Path("skills/bizplan-hwpx/assets/templates/ax1-deliverable-cover.hwpx")
 HWPX_TEMPLATE_MANIFEST = Path("skills/bizplan-hwpx/assets/templates/template-manifest.json")
+APPROVED_XLSX_ASSET = Path("skills/ax1-budget/assets/templates/ax1-budget-ledger.xlsx")
 CONTRIBUTOR_POLICY_FILES = (
     "AGENTS.md",
     "CLAUDE.md",
@@ -123,6 +125,7 @@ CONFIRMATION_REFERENCES = {
     "bizplan-hwpx": "references/07-user-confirmation-gate.md",
     "bizplan-evidence-update": "references/06-user-confirmation-gate.md",
     "ax1-presentation": "references/05-user-confirmation-gate.md",
+    "ax1-budget": "references/01-user-confirmation-gate.md",
 }
 
 
@@ -135,6 +138,18 @@ def copy_file(source: str, target: Path) -> None:
 
 
 def sync_shared_resources() -> None:
+    for skill_name in ALL_SKILLS:
+        copy_file("shared/core/13-skill-backup-retention.md",
+                  SKILLS_ROOT / skill_name / "references" / "13-skill-backup-retention.md")
+    budget = SKILLS_ROOT / "ax1-budget"
+    for source, target in (
+        ("shared/core/12-user-confirmation-gate.md", "references/01-user-confirmation-gate.md"),
+        ("shared/core/10-artifact-version-management.md", "references/03-artifact-version-management.md"),
+        ("shared/core/11-artifact-synchronization.md", "references/04-artifact-synchronization.md"),
+        ("shared/templates/artifact-version-ledger-template.md", "assets/artifact-version-ledger-template.md"),
+        ("shared/templates/artifact-sync-ledger-template.md", "assets/artifact-sync-ledger-template.md"),
+    ):
+        copy_file(source, budget / target)
     for skill_name in GENERAL_SKILLS:
         skill = SKILLS_ROOT / skill_name
         for target_name, source in GENERAL_REFERENCES.items():
@@ -295,7 +310,7 @@ def validate_no_private_artifacts() -> None:
         if path.is_file()
         and not any(part in excluded_roots for part in path.relative_to(ROOT).parts)
         and path.suffix.lower() in FORBIDDEN_ARTIFACT_SUFFIXES
-        and path.relative_to(ROOT) != APPROVED_HWPX_ASSET
+        and path.relative_to(ROOT) not in {APPROVED_HWPX_ASSET, APPROVED_XLSX_ASSET}
     ]
     if forbidden:
         raise ValueError(
@@ -382,8 +397,8 @@ def validate_installation_guides() -> None:
         missing = [skill_name for skill_name in ALL_SKILLS if skill_name not in text]
         if missing:
             raise ValueError(f"{relative}: installation guide is missing skills: {missing}")
-        if "8개 스킬" not in text:
-            raise ValueError(f"{relative}: installation guide must state the complete 8-skill set")
+        if f"{len(ALL_SKILLS)}개 스킬" not in text:
+            raise ValueError(f"{relative}: installation guide must state the complete skill set")
 
 
 def validate_improvement_workflow() -> None:
@@ -453,7 +468,7 @@ def validate_artifact_filename_policy() -> None:
     standard = "DXS-[사업코드]-[문서유형]-[파일제목]-[YYYYMMDD]-vX.Y.[확장자]"
     for token in (
         standard,
-        "DXS-AX-STD-AX_통합_용어사전-20260902-v0.2.docx",
+        "DXS-AX-STD-AX_통합_용어사전-20260903-v0.3.docx",
         "PILAM6",
         "기존 산출물은 일괄 개명하지 않음",
         "제출기관·계약·고객",
@@ -472,6 +487,7 @@ def validate_artifact_filename_policy() -> None:
         "bizplan-preflight": "references/10-artifact-version-management.md",
         "bizplan-hwpx": "references/05-artifact-version-management.md",
         "ax1-presentation": "references/06-artifact-version-management.md",
+        "ax1-budget": "references/03-artifact-version-management.md",
     }
     for skill_name, relative in copies.items():
         path = SKILLS_ROOT / skill_name / relative
@@ -721,6 +737,8 @@ def validate_skills() -> dict[str, str]:
     validate_improvement_workflow()
     validate_release_distribution()
     validate_artifact_filename_policy()
+    validate_skill_backup_policy()
+    validate_budget_acceptance()
     validate_contributor_policy()
     validate_headless_scripts_are_stdlib_only()
     validate_presentation_scripts_are_local_only()
@@ -730,6 +748,35 @@ def validate_skills() -> dict[str, str]:
     validate_lint_examples()
     validate_plugin()
     return versions
+
+
+def validate_skill_backup_policy() -> None:
+    canonical = (ROOT / "shared/core/13-skill-backup-retention.md").read_bytes()
+    reference = "references/13-skill-backup-retention.md"
+    for name in ALL_SKILLS:
+        skill = SKILLS_ROOT / name
+        if (skill / reference).read_bytes() != canonical:
+            raise ValueError(f"{name}: backup policy missing or stale")
+        if f"]({reference})" not in (skill / "SKILL.md").read_text(encoding="utf-8"):
+            raise ValueError(f"{name}: backup policy is unreachable")
+    for relative in (*INSTALLATION_GUIDES, "docs/maintainer-guide.md"):
+        text = (ROOT / relative).read_text(encoding="utf-8")
+        if "직전" not in text or "백업" not in text:
+            raise ValueError(f"{relative}: previous-version backup guidance missing")
+    if (SKILLS_ROOT / "ax1-budget/references/04-artifact-synchronization.md").read_bytes() != (
+        ROOT / "shared/core/11-artifact-synchronization.md"
+    ).read_bytes():
+        raise ValueError("ax1-budget: synchronization policy stale")
+
+
+def validate_budget_acceptance(packaged: bool = False) -> None:
+    command = [sys.executable, str(ROOT / "scripts/budget_acceptance_test.py")]
+    if packaged:
+        command.append("--packages")
+    result = subprocess.run(command, cwd=ROOT, capture_output=True, text=True,
+                            encoding="utf-8", env=utf8_subprocess_env())
+    if result.returncode:
+        raise ValueError("budget acceptance failed:\n" + result.stdout + result.stderr)
 
 
 def add_tree(archive: zipfile.ZipFile, source_root: Path, archive_root: Path) -> None:
@@ -923,10 +970,11 @@ def write_release_notes(versions: dict[str, str]) -> None:
         "## 설치·업데이트",
         "",
         f"- 공개 배포 자산: 통합 ZIP `{PLUGIN_NAME}-v{SUITE_VERSION}.zip`과 `SHA256SUMS.txt`",
-        "- AX1 팀 표준 업데이트는 통합 ZIP의 8개 스킬을 함께 설치·교체",
+        f"- AX1 팀 표준 업데이트는 통합 ZIP의 {len(ALL_SKILLS)}개 스킬을 함께 설치·교체",
         "- 개별 스킬 ZIP은 CI 격리 검증에만 사용하며 GitHub Release 자산으로 공개하지 않음",
         "- 다운로드 후 `SHA256SUMS.txt`로 파일 무결성 확인",
         "- 업데이트 전 기존 사용자 스킬을 백업한 뒤 새 버전 설치",
+        "- 업데이트 성공·검증 후 직전 설치 버전 백업 한 묶음만 유지하고 확인된 오래된 스킬 백업은 삭제. 산출물 이전버전 보관함은 제외",
         "",
         "## 포함 스킬",
         "",
@@ -956,6 +1004,7 @@ def main() -> int:
     versions = validate_skills()
     build_zips(versions)
     validate_packaged_hwpx_skill(versions["bizplan-hwpx"])
+    validate_budget_acceptance(packaged=True)
     write_release_notes(versions)
     write_checksums()
     validate_distribution_outputs(versions)

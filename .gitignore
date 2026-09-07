@@ -24,6 +24,7 @@ __pycache__/
 
 # 매니페스트 SHA-256으로 검증되는 익명화된 AX1 경량 생성 템플릿만 예외
 !skills/bizplan-hwpx/assets/templates/ax1-deliverable-cover.hwpx
+!skills/ax1-budget/assets/templates/ax1-budget-ledger.xlsx
 
 # Operating system files
 .DS_Store

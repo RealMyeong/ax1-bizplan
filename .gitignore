@@ -26,6 +26,9 @@ __pycache__/
 !skills/bizplan-hwpx/assets/templates/ax1-deliverable-cover.hwpx
 !skills/ax1-budget/assets/templates/ax1-budget-ledger.xlsx
 
+# 사용자 승인 비식별 합성 활용 예시 한 개만 포함
+!examples/hwpx/DXS-AX-TST-표흐름_합성검증-20260907-v0.1.hwpx
+
 # Operating system files
 .DS_Store
 Thumbs.db

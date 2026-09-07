@@ -8,13 +8,15 @@ import subprocess
 import sys
 from pathlib import Path
 
+from build_release import APPROVED_HWPX_EXAMPLES
+
 
 ROOT = Path(__file__).resolve().parents[1]
 PROTECTED = {"VERSION", ".codex-plugin/plugin.json", "CHANGELOG.md"}
 FORBIDDEN_DOCUMENT_SUFFIXES = {".hwp", ".hwpx", ".docx", ".pdf", ".pptx", ".xlsx"}
 APPROVED_HWPX_ASSET = "skills/bizplan-hwpx/assets/templates/ax1-deliverable-cover.hwpx"
 HWPX_TEMPLATE_MANIFEST = "skills/bizplan-hwpx/assets/templates/template-manifest.json"
-MEANINGFUL_PREFIXES = ("skills/", "shared/", "scripts/", ".github/", "docs/")
+MEANINGFUL_PREFIXES = ("skills/", "shared/", "scripts/", ".github/", "docs/", "examples/")
 REQUIRED_FRAGMENT_LABELS = (
     "사용자 효과:",
     "변경 범위:",
@@ -53,6 +55,8 @@ def main() -> int:
         for path in files
         if Path(path).suffix.lower() in FORBIDDEN_DOCUMENT_SUFFIXES
         and path != APPROVED_HWPX_ASSET
+        # Exact approved example paths only; the mandatory suite build verifies hashes.
+        and Path(path) not in APPROVED_HWPX_EXAMPLES
     )
     if forbidden_documents:
         errors.append(

@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.dont_write_bytecode = True
 
 import headless_hwpx as H  # noqa: E402
+import layout_headless_artifact as L  # noqa: E402
 
 # 한/글은 셀 안에서 글자를 조금 압축해 넣으므로 실제 글자 폭이 줄 용량을 다소 넘어도
 # 정상이다. 한/글이 직접 배치한 문서를 재어 정한 값이다.
@@ -176,6 +177,11 @@ def check(path: Path) -> list:
         else 42520
     )
     bullet_prefix_width = None
+    first_heading_style = heading_styles.get('개요 1')
+    in_main_body = not any(
+        L.attr(para, 'styleIDRef') == first_heading_style
+        for off, _, para in L.top_paragraphs(section) if off >= body_start
+    )
     if not regular.portable:
         bullet_prefix_width, _ = H.text_width(
             "• ",
@@ -215,6 +221,8 @@ def check(path: Path) -> list:
             )
         pid = pid_match.group(1) if pid_match else None
         if heading_level:
+            if heading_level == 1:
+                in_main_body = True
             if text != " " * expected + stripped:
                 add(
                     "개요 수준 들여쓰기",
@@ -240,7 +248,10 @@ def check(path: Path) -> list:
             )
             continue
 
-        if stripped.startswith("• "):
+        list_prefix = H.re.match(r'^(• |\d+\.\s+)', stripped) if in_main_body else None
+        if list_prefix:
+            prefix = list_prefix.group(1)
+            expected_left, expected_intent = L.list_margins(prefix, regular, boldfont)
             props = para_prs.get(pid, {}) if pid else {}
             if text != stripped:
                 add(
@@ -248,20 +259,20 @@ def check(path: Path) -> list:
                     f"글머리표 앞에 일반 공백이 남아 문단 들여쓰기와 중복됨 :: {text[:34]!r}",
                 )
             if (
-                props.get("left") != H.BODY_LIST_LEFT_INDENT
-                or props.get("intent") != H.BODY_LIST_FIRST_LINE_INDENT
+                props.get("left") != expected_left
+                or props.get("intent") != expected_intent
             ):
                 add(
                     "본문 목록 들여쓰기",
                     f"문단모양 {pid}의 왼쪽·첫 줄 값이 "
                     f"{props.get('left')}·{props.get('intent')} (규칙 "
-                    f"{H.BODY_LIST_LEFT_INDENT}·{H.BODY_LIST_FIRST_LINE_INDENT})",
+                    f"{expected_left}·{expected_intent})",
                 )
             if H.BODY_LIST_BULLET_POSITION != (
                 H.BODY_LIST_LEFT_INDENT + H.BODY_LIST_FIRST_LINE_INDENT
             ):
                 add("본문 목록 들여쓰기", "글머리표 위치와 문단 hanging indent 상수의 관계가 일치하지 않음")
-            if bullet_prefix_width is not None and abs(
+            if prefix == '• ' and bullet_prefix_width is not None and abs(
                 H.BODY_LIST_BULLET_POSITION + bullet_prefix_width - H.BODY_LIST_LEFT_INDENT
             ) > 100:
                 add("본문 목록 들여쓰기", "글머리표 폭과 후속 줄 본문 시작 위치가 1 HWPUNIT 기준값을 초과함")
@@ -275,7 +286,7 @@ def check(path: Path) -> list:
             if not line_segs:
                 add("본문 목록 줄 배치", f"lineseg 캐시가 없음 :: {text[:34]!r}")
             for line_index, (_, horzpos, horzsize) in enumerate(line_segs):
-                expected_pos = H.BODY_LIST_BULLET_POSITION if line_index == 0 else H.BODY_LIST_LEFT_INDENT
+                expected_pos = H.BODY_LIST_BULLET_POSITION if line_index == 0 else expected_left
                 expected_size = text_width - expected_pos
                 if horzpos != expected_pos or horzsize != expected_size:
                     add(
@@ -292,6 +303,8 @@ def check(path: Path) -> list:
 
     # 본문·목록·표 뒤의 수준 2~3 제목만 공통 윗간격을 사용한다. 연속 제목과
     # 페이지 첫 제목에는 간격을 만들지 않고 수준 1의 새 쪽 동작을 유지한다.
+    boundary_plan = L.layout_plan(section, header) if body_start else []
+    planned_prev = {L.attr(item['xml'], 'id'): item['prev'] for item in boundary_plan}
     for index, paragraph in enumerate(top_level):
         if paragraph["kind"] != "heading" or not paragraph["pid"]:
             continue
@@ -303,6 +316,9 @@ def check(path: Path) -> list:
             if level in {2, 3} and previous_kind in {"body", "list", "table"}
             else 0
         )
+        # A preceding floating table owns the 12pt in its bottom outside margin.
+        paragraph_id = L.attr('<hp:p ' + paragraph['attrs'] + '>', 'id')
+        expected_prev = planned_prev.get(paragraph_id, expected_prev)
         if props.get("prev") != expected_prev:
             add(
                 "제목 위 간격",
@@ -311,6 +327,10 @@ def check(path: Path) -> list:
             )
         if level == 1 and 'pageBreak="1"' not in paragraph["attrs"]:
             add("제목 새 쪽", f"수준 1 제목에 pageBreak=1이 없음 :: {paragraph['text'][:34]!r}")
+
+    if body_start:
+        for rule, detail in L.check_layout(section, header):
+            add(rule, detail)
 
     # 4. 글자 크기 - 본문 구간
     used_heights = {}

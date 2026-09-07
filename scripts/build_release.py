@@ -66,6 +66,11 @@ INSTALLATION_GUIDES = (
 APPROVED_HWPX_ASSET = Path("skills/bizplan-hwpx/assets/templates/ax1-deliverable-cover.hwpx")
 HWPX_TEMPLATE_MANIFEST = Path("skills/bizplan-hwpx/assets/templates/template-manifest.json")
 APPROVED_XLSX_ASSET = Path("skills/ax1-budget/assets/templates/ax1-budget-ledger.xlsx")
+# User-approved synthetic output, not a reusable template or arbitrary document exemption.
+APPROVED_HWPX_EXAMPLES = {
+    Path("examples/hwpx/DXS-AX-TST-표흐름_합성검증-20260907-v0.1.hwpx"):
+        "8740253bf457f89fbbab9592a2712f4f0aacd71b2e07cbe546f120a2c3313880",
+}
 CONTRIBUTOR_POLICY_FILES = (
     "AGENTS.md",
     "CLAUDE.md",
@@ -310,13 +315,17 @@ def validate_no_private_artifacts() -> None:
         if path.is_file()
         and not any(part in excluded_roots for part in path.relative_to(ROOT).parts)
         and path.suffix.lower() in FORBIDDEN_ARTIFACT_SUFFIXES
-        and path.relative_to(ROOT) not in {APPROVED_HWPX_ASSET, APPROVED_XLSX_ASSET}
+        and path.relative_to(ROOT) not in {APPROVED_HWPX_ASSET, APPROVED_XLSX_ASSET, *APPROVED_HWPX_EXAMPLES}
     ]
     if forbidden:
         raise ValueError(
             "skills contain forbidden document or credential artifacts: "
             + ", ".join(sorted(forbidden))
         )
+    for relative_path, digest in APPROVED_HWPX_EXAMPLES.items():
+        example = ROOT / relative_path
+        if not example.is_file() or hashlib.sha256(example.read_bytes()).hexdigest() != digest:
+            raise ValueError(f"approved synthetic HWPX example missing or SHA-256 mismatch: {relative_path}")
 
 
 def validate_confirmation_gate() -> None:
@@ -546,6 +555,7 @@ def validate_headless_scripts_are_stdlib_only() -> None:
     script_root = SKILLS_ROOT / "bizplan-hwpx" / "scripts"
     paths = [
         script_root / "headless_hwpx.py",
+        script_root / "layout_headless_artifact.py",
         script_root / "format_headless_artifact.py",
         script_root / "check_headless_artifact.py",
         script_root / "build_headless_artifact.py",
@@ -688,20 +698,18 @@ def validate_approved_hwpx_asset() -> None:
 
 
 def validate_headless_acceptance() -> None:
-    result = subprocess.run(
-        [sys.executable, str(ROOT / "scripts" / "headless_hwpx_acceptance_test.py")],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        env=utf8_subprocess_env(),
-    )
-    if result.returncode != 0:
-        raise ValueError(
-            "headless HWPX acceptance test failed:\n"
-            + result.stdout
-            + result.stderr
+    for test in ("headless_hwpx_acceptance_test.py", "headless_table_layout_test.py"):
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / test)],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            env=utf8_subprocess_env(),
         )
+        if result.returncode != 0:
+            raise ValueError("headless HWPX acceptance test failed (" + test + "):\n"
+                             + result.stdout + result.stderr)
 
 
 def validate_presentation_acceptance() -> None:
@@ -812,6 +820,7 @@ def validate_packaged_hwpx_skill(version: str) -> None:
         "bizplan-hwpx/assets/templates/template-manifest.json",
         "bizplan-hwpx/scripts/build_headless_artifact.py",
         "bizplan-hwpx/scripts/check_headless_artifact.py",
+        "bizplan-hwpx/scripts/layout_headless_artifact.py",
     }
     with zipfile.ZipFile(archive_path) as archive:
         missing = sorted(required - set(archive.namelist()))

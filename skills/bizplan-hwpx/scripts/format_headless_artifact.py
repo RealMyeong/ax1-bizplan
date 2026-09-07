@@ -3,8 +3,8 @@
 일반 문서를 임의로 고치는 공개 편집기가 아니다. 승인 템플릿에서 생성된 임시
 산출물에만 build_headless_artifact.py가 내부적으로 호출한다. 표지~목차 제목은
 건드리지 않고, 본문과 본문 표에 160% 규칙과 표 축·내용 셀 맞춤 규칙을 적용한다.
-생성기가 부여한 제목 윗간격과 목록 hanging indent 및 가로 lineseg 위치는 그대로
-보존한다.
+목록 hanging indent는 보존한다. 표의 최종 폭으로 셀 줄 수·행 높이를 다시 계산한
+뒤 표 배치·경계 12pt의 단일 적용·표 앵커 캐시를 동기화한다.
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.dont_write_bytecode = True
 
 import headless_hwpx as H  # noqa: E402
+import layout_headless_artifact as L  # noqa: E402
 
 
 class ParaPrPool:
@@ -57,7 +58,7 @@ class ParaPrPool:
     def _strip_id(block: str) -> str:
         return re.sub(r'^<hh:paraPr id="\d+"', '<hh:paraPr', block)
 
-    def _render(self, pid: str, spacing: int, align) -> str:
+    def _render(self, pid: str, spacing: int, align, prev=None, next_spacing=None) -> str:
         block = self.blocks[pid]
         block = re.sub(
             r'(<hh:lineSpacing type="PERCENT" value=")-?\d+(")',
@@ -66,19 +67,34 @@ class ParaPrPool:
         )
         if align:
             block = re.sub(r'(<hh:align horizontal=")\w+(")', lambda m: m.group(1) + align + m.group(2), block)
+        margin_index = 0
+
+        def margin_values(match):
+            nonlocal margin_index
+            scale = 1 if margin_index == 0 else 2
+            margin_index += 1
+            margin = match[0]
+            for name, value in (("prev", prev), ("next", next_spacing)):
+                if value is not None:
+                    margin = re.sub(rf'(<hc:{name} value=")-?\d+(")',
+                                    lambda m, v=value * scale: m[1] + str(v) + m[2], margin)
+            return margin
+
+        if prev is not None or next_spacing is not None:
+            block = re.sub(r'<hh:margin>.*?</hh:margin>', margin_values, block, flags=re.S)
         return block
 
-    def variant(self, pid: str, spacing: int, align=None) -> str:
+    def variant(self, pid: str, spacing: int, align=None, prev=None, next_spacing=None) -> str:
         """줄간격/정렬이 맞는 문단모양 id 를 돌려준다.
 
         내용이 똑같은 문단모양이 이미 있으면 그것을 재사용한다. 매번 복제하면
         같은 파일에 두 번 적용했을 때 쓰이지 않는 문단모양이 계속 쌓인다.
         """
-        key = (pid, spacing, align)
+        key = (pid, spacing, align, prev, next_spacing)
         if key in self.cache:
             return self.cache[key]
 
-        want = self._strip_id(self._render(pid, spacing, align))
+        want = self._strip_id(self._render(pid, spacing, align, prev, next_spacing))
         for other_id, block in self.blocks.items():
             if self._strip_id(block) == want:
                 self.cache[key] = other_id
@@ -86,7 +102,7 @@ class ParaPrPool:
 
         new_id = str(self.next_id)
         self.next_id += 1
-        block = re.sub(r'^<hh:paraPr id="\d+"', f'<hh:paraPr id="{new_id}"', self._render(pid, spacing, align))
+        block = re.sub(r'^<hh:paraPr id="\d+"', f'<hh:paraPr id="{new_id}"', self._render(pid, spacing, align, prev, next_spacing))
         self.blocks[new_id] = block
         self.new_blocks.append(block)
         self.cache[key] = new_id
@@ -345,10 +361,16 @@ def apply(src: Path, dst: Path) -> list:
             widened += 1
             log.append(f"열 너비 재배분 {changed[0]} -> {changed[1]}")
 
+        tbl = L.reflow_table(tbl, char_prs, regular, boldfont)
         pieces.append(tbl)
         last = end
     pieces.append(format_body_segment(section[last:]))
     section = "".join(pieces)
+    width = re.search(r'<hp:pagePr\b.*?<hp:margin\b[^>]*/>', section, re.S)[0]
+    page_width = int(L.attr(width, 'width'))
+    margin = re.search(r'<hp:margin\b[^>]*/>', width)[0]
+    text_width = page_width - int(L.attr(margin, 'left')) - int(L.attr(margin, 'right'))
+    section = L.normalize(section, header, pool, text_width)
     log.append(f"본문 문단 줄간격 {H.BODY_LINE_SPACING}% : 문단모양 {len(body_para_ids)}개")
     log.append(f"표 머리행 음영: {header_rows}개 표")
     log.append(
@@ -356,6 +378,8 @@ def apply(src: Path, dst: Path) -> list:
         f"나머지 셀 가로왼쪽, 줄간격 {H.CELL_LINE_SPACING}%"
     )
     log.append(f"표 열 너비 재배분 {widened}개 표")
+    log.append("최종 열 폭으로 셀·행 높이 재계산; 한 쪽 이내 표는 글자처럼 취급, 초과 표만 해제/CELL")
+    log.append("표 경계 12pt: inline은 다음 문단, 긴 floating 표는 바깥 여백이 단독 소유; 앵커 캐시 갱신")
 
     H.set_text(entries, H.HEADER, pool.finish())
     H.set_text(entries, H.SECTION, section)

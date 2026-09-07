@@ -2,7 +2,7 @@
 name: bizplan-evidence-update
 description: 새 공고문, 양식, 선정·탈락 사업계획서, 평가의견과 보완결과를 분석해 사업계획서 스킬의 근거 레지스터, 사업 프로파일, 검토 렌즈와 테스트를 업데이트한다. 단일 사례 편향을 막고 규칙의 승격·보류·충돌을 관리할 때 사용한다. 개별 계획서 초안 작성이나 단순 검토에는 사용하지 않는다.
 metadata:
-  version: "0.3.0"
+  version: "0.3.1"
   architecture: "evidence-maintained"
   updated: "2026-08-19"
 ---

@@ -1,15 +1,15 @@
 {
   "name": "ax1-bizplan",
-  "version": "0.9.4",
-  "description": "AX1 팀의 사업계획서 작성·HWPX 처리와 보고·제안 발표자료 제작을 공통 확인·버전·연동 정책으로 수행하는 통합 스킬팩",
+  "version": "0.10.0",
+  "description": "AX1 팀의 사업계획서·HWPX·발표자료·사업비 관리대장을 공통 확인·버전·연동 정책으로 작성하는 통합 스킬팩",
   "author": {
     "name": "AX1 Team"
   },
   "skills": "./skills/",
   "interface": {
     "displayName": "AX1 Skill Pack",
-    "shortDescription": "AX1 사업계획서·HWPX·발표자료 통합 제작 워크플로",
-    "longDescription": "국가 R&D와 공모 사업계획서의 준비·초안·HWPX·검토·수정·제출 점검뿐 아니라, 보고·제안 발표자료의 스토리보드와 편집형·이미지형 PPTX 제작까지 공통 확인·최신본·연동 정책으로 지원합니다.",
+    "shortDescription": "AX1 사업계획서·HWPX·발표자료·사업비 통합 워크플로",
+    "longDescription": "국가 R&D와 공모 사업계획서의 준비·초안·HWPX·검토·수정·제출 점검, 보고·제안 발표자료의 스토리보드와 PPTX 제작, 공통 XLSX 양식 기반 사업비·구매비용 관리대장을 공통 확인·최신본·연동 정책으로 지원합니다.",
     "developerName": "AX1 Team",
     "category": "Productivity",
     "capabilities": [

@@ -310,7 +310,8 @@ GitHub: https://github.com/RealMyeong/ax1-bizplan/releases/tag/vX.Y.Z
 GitHub 접근이 없으면 공유 드라이브의 ax1-bizplan-vX.Y.Z.zip을 사용하세요.
 
 오류·개선 요청: 에이전트가 Discussion·Issue·Fork 기반 PR 중 적절한 창구를 선택하고 이유를 설명하게 하세요.
-안내: https://github.com/RealMyeong/ax1-bizplan/blob/main/CONTRIBUTING.md
+사용 설명서: https://realmyeong.github.io/ax1-bizplan/
+기여 안내: https://github.com/RealMyeong/ax1-bizplan/blob/main/CONTRIBUTING.md
 ```
 
 ## 10. 릴리스 완료 처리
@@ -328,6 +329,17 @@ GitHub 접근이 없으면 공유 드라이브의 ax1-bizplan-vX.Y.Z.zip을 사�
 5. 패치 버전으로 다시 릴리스
 
 이미 배포한 Git 태그와 Release 자산을 임의로 덮어쓰지 않습니다. 릴리스 노트의 오탈자·요약 보완만 자산과 태그를 바꾸지 않는 범위에서 허용하며, 기능 수정은 새 버전으로 배포해 이력을 보존합니다.
+
+## 12. 웹 사용 설명서 배포
+
+- 공개 주소: <https://realmyeong.github.io/ax1-bizplan/>. GitHub Pages의 Source는 `GitHub Actions`로 설정합니다.
+- 편집 원본은 `docs/ax1-bizplan-guide.html` 한 곳입니다. 별도 HTML 사본을 수동 관리하지 않습니다.
+- `Publish user guide`는 `Validate and release`의 성공한 원본 저장소 push 실행 완료 후 최신 안정 Release를 조회하고, 그 태그가 가리키는 정확한 커밋의 안내문만 공개합니다. `main` 검사 뒤에도 같은 안정본을 재배포할 수 있지만 미릴리즈 본문은 공개하지 않습니다.
+- 기존 자동 릴리즈가 `GITHUB_TOKEN`으로 만들어지므로 `release: published` 이벤트만 의존하지 않고 `workflow_run` 완료를 사용합니다. 수동 Release 게시와 Actions의 `Run workflow`도 지원하며, 어느 경우든 최신 안정본만 선택합니다.
+- 공개 파일은 `index.html`, `.nojekyll`, `version.json` 3개뿐입니다. 전체 저장소·문서 폴더·양식·산출물·자격증명을 Pages에 업로드하지 않습니다. PR/Fork 코드나 실행 산출물을 권한 있는 배포 작업에서 실행·사용하지 않습니다.
+- 웹 상단의 버전·한국 날짜와 하단 릴리즈 원문 링크는 배포 시 자동 삽입합니다. `version.json`에서 기준 태그·커밋·원문 및 게시 HTML 해시를 확인할 수 있습니다. 기존 태그·ZIP·HTML 원문은 수정하지 않습니다.
+- 릴리즈 후 Pages 작업 성공, 공개 주소 접속, 웹 상단 버전과 `version.json`의 최신 Release 일치를 확인하고 팀에 같은 주소를 안내합니다. Pages만 실패했으면 Release를 다시 만들지 말고 `Publish user guide`를 `main`에서 수동 재실행합니다.
+- 검증: `python scripts/pages_test.py`와 전체 저장소 빌드. 새 이미지·CSS 파일·상대경로 링크가 필요해지면 먼저 공개 파일 허용 목록과 테스트를 확장해야 합니다.
 
 ## 공식 참고자료
 

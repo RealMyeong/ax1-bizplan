@@ -37,6 +37,9 @@ jobs:
       - name: Validate skills and build packages
         run: python scripts/build_release.py
 
+      - name: Validate public guide packaging
+        run: python scripts/pages_test.py
+
       - name: Verify release tag matches VERSION
         if: startsWith(github.ref, 'refs/tags/')
         shell: bash

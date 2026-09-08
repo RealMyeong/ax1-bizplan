@@ -10,13 +10,15 @@ v0.10.0부터 사업비·구매비용 관리대장 전용 `ax1-budget`을 포함
 
 | 대상 | 문서·창구 |
 |---|---|
-| 전체 안내 | [HTML 안내문](docs/ax1-bizplan-guide.html) |
+| 전체 안내 | [사용 설명서 바로 보기](https://realmyeong.github.io/ax1-bizplan/) · [HTML 원본](docs/ax1-bizplan-guide.html) |
 | 팀원 | [설치·활용·업데이트 안내](docs/team-guide.md) |
 | 배포자 | [개선 접수·개발·릴리스 운영 안내](docs/maintainer-guide.md) |
 | 기여자·제안 | [기여 안내](CONTRIBUTING.md) · [제안·PR 운영 원칙](docs/pr-operating-policy.md) |
 | 발표자료 upstream 검토 | [codex-ppt-skill 검토와 AX1 적용 결정](docs/upstream-codex-ppt-assessment.md) |
 | 개선 요청 | [Discussions](https://github.com/RealMyeong/ax1-bizplan/discussions) · [Issues](https://github.com/RealMyeong/ax1-bizplan/issues) · [Pull Requests](https://github.com/RealMyeong/ax1-bizplan/pulls) |
 | 배포 파일 | [GitHub Releases](https://github.com/RealMyeong/ax1-bizplan/releases) |
+
+웹 사용 설명서는 로그인 없이 열 수 있으며, 최신 안정 Release의 안내문으로 자동 갱신됩니다. 작업 중인 `main` 안내문은 릴리즈 전까지 공개 웹 내용에 반영되지 않습니다.
 
 GitHub 접근 권한이 없는 팀원에게는 배포자가 최신 Release ZIP과 `SHA256SUMS.txt`를 공유 드라이브로 전달합니다. 팀원은 설치 경로를 직접 다루기보다 Codex 또는 Claude에게 설치·백업·검증을 요청하는 방식을 기본으로 합니다.
 

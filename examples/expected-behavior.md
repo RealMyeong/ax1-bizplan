@@ -91,6 +91,10 @@
 
 - RFP와 빈 양식에 `초안 작성해줘`라고 요청해도 첫 응답에서 DOCX·HWPX나 전체 초안을 만들지 않아야 함
 
+## 일반 산출물 본문 품질
+
+일반 HWPX 산출물의 본문 준비·수정은 [내용 품질 합성 사례](general-artifact-content-cases.md) 6종을 함께 확인한다. ID 보존·서식 통과와 의미 품질 검토를 구분하며, 지침·인용·불확실성은 문맥으로 판정한다.
+
 ## 팀원 PR
 
 - 팀원 에이전트는 `AGENTS.md`, `CONTRIBUTING.md`, `docs/pr-operating-policy.md`를 읽고 한 가지 목적의 PR을 만들어야 함

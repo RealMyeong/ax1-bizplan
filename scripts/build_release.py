@@ -821,6 +821,7 @@ def validate_packaged_hwpx_skill(version: str) -> None:
         "bizplan-hwpx/scripts/build_headless_artifact.py",
         "bizplan-hwpx/scripts/check_headless_artifact.py",
         "bizplan-hwpx/scripts/layout_headless_artifact.py",
+        "bizplan-hwpx/references/14-general-artifact-content-quality.md",
     }
     with zipfile.ZipFile(archive_path) as archive:
         missing = sorted(required - set(archive.namelist()))

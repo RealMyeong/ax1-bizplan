@@ -18,6 +18,23 @@ REPO_URL = 'https://github.com/RealMyeong/ax1-bizplan'
 GUIDE_PATH = Path('docs/ax1-bizplan-guide.html')
 PUBLIC_FILES = {'index.html', '.nojekyll', 'version.json'}
 VERSION_BADGE = re.compile(r'(<div class="version">)[^<]*(</div>)')
+NAV_ROOT = Path(__file__).resolve().parent / 'web'
+
+
+def add_navigation(document):
+    """Add trusted publisher UI, never unreleased instructions or content."""
+    assets = {}
+    for extension in ('css', 'js'):
+        path = NAV_ROOT / f'guide-navigation.{extension}'
+        if path.is_symlink() or not path.is_file():
+            raise ValueError('Navigation publisher asset missing or linked')
+        assets[extension] = path.read_text(encoding='utf-8')
+    if document.count('</body>') != 1:
+        raise ValueError('Exactly one guide body is required')
+    document = document.replace('</head>', '<style id="guide-navigation-style">\n' + assets['css'] + '\n</style>\n</head>')
+    document = document.replace('</body>', '<script id="guide-navigation-script">\n' + assets['js'] + '\n</script>\n</body>')
+    hashes = {ext: hashlib.sha256(text.encode('utf-8')).hexdigest() for ext, text in assets.items()}
+    return document, hashes
 
 
 class GuideValidator(HTMLParser):
@@ -90,6 +107,7 @@ def build(source_root: Path, output: Path, tag: str, commit: str, published_at: 
         f' · <a href="{source_url}">릴리즈 원문</a></p>'
     )
     document = document.replace('<footer>', '<footer>\n      ' + provenance)
+    document, navigation_hashes = add_navigation(document)
     GuideValidator().validate(document)
     # Never delete or publish an entire pre-existing directory.
     if output.exists() and (not output.is_dir() or any(output.iterdir())):
@@ -104,6 +122,7 @@ def build(source_root: Path, output: Path, tag: str, commit: str, published_at: 
         'source_path': GUIDE_PATH.as_posix(),
         'source_sha256': hashlib.sha256(original).hexdigest(),
         'index_sha256': hashlib.sha256((output / 'index.html').read_bytes()).hexdigest(),
+        'navigation_sha256': navigation_hashes,
     }
     (output / 'version.json').write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
     if {path.name for path in output.iterdir()} != PUBLIC_FILES:

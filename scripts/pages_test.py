@@ -87,9 +87,22 @@ class PagesTests(unittest.TestCase):
         text = (self.output / 'index.html').read_text(encoding='utf-8')
         for element in ('script', 'style'):
             pattern = rf'<{element}[^>]*>(.*?)</{element}>'
-            self.assertEqual(re.findall(pattern, original, re.S), re.findall(pattern, text, re.S))
+            without_navigation = re.sub(r'<(style|script) id="guide-navigation-(style|script)">.*?</\1>', '', text, flags=re.S)
+            self.assertEqual(re.findall(pattern, original, re.S), re.findall(pattern, without_navigation, re.S))
         self.assertIn('navigator.clipboard.writeText', text)
         self.assertIn('role="tab"', text)
+
+    def test_navigation_is_self_contained_and_separate_from_release_content(self):
+        before = self.guide.read_bytes()
+        result = self.run_build()
+        text = (self.output / 'index.html').read_text(encoding='utf-8')
+        for ext, element in [('css', 'style'), ('js', 'script')]:
+            asset = (ROOT / 'scripts' / 'web' / f'guide-navigation.{ext}').read_text(encoding='utf-8')
+            self.assertEqual(result['navigation_sha256'][ext], hashlib.sha256(asset.encode('utf-8')).hexdigest())
+            self.assertEqual(text.count(f'id="guide-navigation-{element}"'), 1)
+            self.assertIn(asset, text)
+        self.assertEqual(self.guide.read_bytes(), before)
+        self.assertEqual({p.name for p in self.output.iterdir()}, PUBLIC_FILES)
 
 
 if __name__ == '__main__':

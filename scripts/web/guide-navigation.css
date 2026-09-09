@@ -1,0 +1,38 @@
+/* Website-only navigation: released guide text and handlers remain unchanged. */
+.guide-toc { position: fixed; inset: 20px auto 20px 16px; width: 240px; z-index: 30;
+  background: #fff; border: 1px solid #dbe3ef; border-radius: 16px;
+  box-shadow: 0 8px 28px #14213d12; overflow: auto; overscroll-behavior: contain;
+  padding: 18px 12px; font-size: 13px; }
+.guide-toc summary { font-size: 16px; font-weight: 800; cursor: pointer; padding: 4px 8px 12px; }
+.guide-toc:not([open]) { bottom: auto; }
+.guide-toc nav > p { margin: 16px 8px 6px; color: #5f6c82; font-weight: 750; }
+.guide-toc ul { list-style: none; padding: 0; margin: 0; }
+.guide-toc a { display: block; padding: 7px 10px; border-radius: 8px; color: #46536a;
+  text-decoration: none; overflow-wrap: anywhere; line-height: 1.5; }
+.guide-toc a:hover { background: #f3f6fa; }
+.guide-toc a[aria-current="location"] { background: #eaf0ff; color: #1947ba; font-weight: 800; box-shadow: inset 3px 0 #2457d6; }
+.guide-toc a:focus-visible, .guide-toc summary:focus-visible { outline: 3px solid #2457d6; outline-offset: 2px; }
+.guide-toc .toc-section { font-weight: 750; margin-top: 6px; }
+.guide-toc .toc-detail { padding-left: 20px; }
+.has-guide-toc .page, .has-guide-toc .topbar-inner { width: auto; max-width: 1160px; margin-left: 280px; margin-right: 24px; }
+.has-guide-toc [id^="toc-"] { scroll-margin-top: 90px; }
+.has-guide-toc .card-grid > * { min-width: 0; }
+.has-guide-toc pre { overflow-wrap: anywhere; }
+.has-guide-toc code { overflow-wrap: anywhere; word-break: break-word; }
+@media (min-width: 1480px) {
+  .has-guide-toc .page, .has-guide-toc .topbar-inner { margin-left: calc(280px + (100% - 1480px) / 2); }
+  .guide-toc { left: max(16px, calc((100% - 1480px) / 2 + 16px)); }
+}
+@media (max-width: 1000px) {
+  .has-guide-toc .page, .has-guide-toc .topbar-inner { width: min(1160px, calc(100% - 40px)); margin-left: auto; margin-right: auto; }
+  .guide-toc { inset: auto 12px 12px 12px; width: auto; max-height: 65vh; padding: 10px; }
+  .guide-toc summary { padding: 4px 8px; }
+  .guide-toc[open] summary { padding-bottom: 12px; }
+  .guide-toc:not([open]) { top: auto; bottom: 12px; }
+  .has-guide-toc { padding-bottom: 76px; }
+}
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto !important; } }
+@media print {
+  .guide-toc { display: none !important; }
+  .has-guide-toc .page, .has-guide-toc .topbar-inner { width: auto; margin: 0; }
+}

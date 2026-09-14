@@ -77,7 +77,7 @@ def check(path: Path) -> list:
             analysis = H.analyze_revision_table(
                 section[start:end],
                 require_record=True,
-                require_empty_row=True,
+                require_empty_row=False,
             )
             for detail in analysis.issues:
                 add("개정 이력", detail)

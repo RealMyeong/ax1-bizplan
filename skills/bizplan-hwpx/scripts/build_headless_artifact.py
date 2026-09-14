@@ -27,6 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.dont_write_bytecode = True
 
 import headless_hwpx as H  # noqa: E402
+import artifact_metadata as M  # noqa: E402
 import format_headless_artifact as A  # noqa: E402
 import check_headless_artifact as C  # noqa: E402
 import layout_headless_artifact as L  # noqa: E402
@@ -544,6 +545,11 @@ def fill_cover(section: str, header: str, values: dict[str, str], log: list) -> 
     }
     if any(not str(value).strip() for value in placeholders.values()):
         raise H.HeadlessHwpxError("표지 정보에 빈 값이 있음")
+    # Keep the full approved title. Suppress only the redundant type slot,
+    # never remove matching words from arbitrary body headings or the TOC.
+    if re.sub(r'\s+', '', values['title']).endswith(re.sub(r'\s+', '', values['document_type'])):
+        placeholders['[문서 유형]'] = ''
+        log.append('표지 제목에 포함된 문서 유형의 별도 반복 표시 생략')
 
     plan = {}
     for off, _, body in H.paragraphs(section):
@@ -661,6 +667,9 @@ def build(
     revision_note="최초 작성",
     revision_author="",
     revision_date=None,
+    previous_artifact=None,
+    previous_sha256=None,
+    document_info=None,
 ) -> list:
     artifact_version = H.validate_artifact_version(artifact_version)
     revision_date = H.normalize_revision_date(revision_date)
@@ -669,6 +678,12 @@ def build(
     if not isinstance(revision_author, str):
         raise H.HeadlessHwpxError("개정 작성자는 문자열이어야 함")
     out = H.require_new_artifact_output(Path(out), artifact_version, revision_date)
+    prior_records, people = M.prepare(previous_artifact, previous_sha256, out,
+                                     artifact_version, revision_date, document_info)
+    person_author = people.get('작성자', {}).get('성명', '')
+    if revision_author and person_author and revision_author != person_author:
+        raise H.HeadlessHwpxError('문서 정보 작성자와 개정 작성자가 충돌함')
+    revision_author = revision_author or person_author
     template = Path(template)
     approved = default_template()
     if template.resolve() != approved.resolve():
@@ -734,15 +749,12 @@ def build(
     )
 
     section = fill_cover(section, header, cover, log)
-    section = record_initial_revision(
-        section,
-        header,
-        version=artifact_version,
-        revision_date=revision_date,
-        note=revision_note,
-        author=revision_author,
-        log=log,
-    )
+    def metadata_layout(paragraph):
+        return relayout_paragraph(paragraph, H.parse_char_prs(header), regular, boldfont)
+    section = M.fill_people(section, people, metadata_layout)
+    section = M.fill_history(section, prior_records, artifact_version, revision_date,
+                             revision_note, revision_author, metadata_layout)
+    log.append(f'기존 이력 {len(prior_records)}행 보존 + 새 개정 1행; 문서 정보 {len(people)}개 역할 반영')
     try:
         preview = H.get_text(entries, H.PREVIEW)
         for placeholder, key in (
@@ -753,7 +765,10 @@ def build(
             ("[산출물 제목]", "title"),
             ("[문서 유형]", "document_type"),
         ):
-            preview = preview.replace(placeholder, cover[key])
+            value = cover[key]
+            if key == 'document_type' and re.sub(r'\s+', '', cover['title']).endswith(re.sub(r'\s+', '', value)):
+                value = ''
+            preview = preview.replace(placeholder, value)
         H.set_text(entries, H.PREVIEW, preview)
     except KeyError:
         pass
@@ -802,6 +817,8 @@ def build(
         if issues:
             summary = "; ".join(f"{item['rule']}: {item['detail']}" for item in issues[:8])
             raise H.HeadlessHwpxError("경량 생성 후 자동검사 실패: " + summary)
+        if previous_artifact is not None and H.sha256_file(Path(previous_artifact)) != previous_sha256.lower():
+            raise H.HeadlessHwpxError('게시 직전 기준본 SHA-256 변경; 재검토 필요')
         H.publish_new_file(fmt_path, out)
     except Exception as exc:
         build_error = exc
@@ -838,6 +855,9 @@ def main() -> int:
     ap.add_argument("--revision-note", default="최초 작성", help="개정 이력의 개정내역 (기본: 최초 작성)")
     ap.add_argument("--revision-author", default="", help="개정 이력의 작성자; 확인자는 자동 입력하지 않음")
     ap.add_argument("--revision-date", default=None, help="테스트·재현용 개정일자 YYYY-MM-DD; 기본은 한국 날짜")
+    ap.add_argument('--previous-artifact', type=Path, help='같은 산출물군의 기존 이력 기준본 (읽기 전용)')
+    ap.add_argument('--previous-sha256', help='확인한 기준본의 SHA-256')
+    ap.add_argument('--document-info', type=Path, help='확인된 문서 정보 JSON: 역할별 소속·성명·날짜')
     args = ap.parse_args()
 
     try:
@@ -869,6 +889,9 @@ def main() -> int:
             args.revision_note,
             args.revision_author,
             args.revision_date,
+            previous_artifact=args.previous_artifact,
+            previous_sha256=args.previous_sha256,
+            document_info=args.document_info,
         ):
             print(line)
     except (H.HeadlessHwpxError, OSError, ValueError) as exc:

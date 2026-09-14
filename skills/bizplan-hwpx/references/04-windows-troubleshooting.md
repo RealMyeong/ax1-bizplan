@@ -1,5 +1,9 @@
 # Windows HWPX 문제 해결
 
+## 사용자만 파일 열기·수정이 거부됨
+
+에이전트가 만든 임시 파일의 제한된 ACL이 하드링크나 이동으로 최종 파일에 남을 수 있다. [문서 관리의 권한 절차](15-document-control.md)를 적용한다. 실제 사용자 컨텍스트의 `Test-HwpxAccess.ps1` 결과와 원본·출력·부모 폴더 ACL을 비교하고, 잠금·읽기 전용·보안 프로그램 차단과 구분한다. 생성기 성공이나 에이전트 계정 readback만으로 사용자 접근을 검증했다고 하지 않는다. 부모 폴더 재귀 권한 변경·Everyone 전체제어·관리자 상시 실행으로 해결하지 않는다.
+
 ## `uvx`를 찾을 수 없음
 
 - Astral 공식 Windows 설치 방법으로 `uv`를 설치함: <https://docs.astral.sh/uv/getting-started/installation/>

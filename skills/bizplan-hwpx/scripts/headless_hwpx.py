@@ -236,12 +236,17 @@ def publish_new_file(source: Path, target: Path) -> None:
     created = False
     try:
         try:
+            if os.name == "nt":
+                # A hard link retains the temporary file's DACL. Create a new
+                # file in the destination instead, inheriting that directory's
+                # ACL; never copy the temporary security descriptor or chmod it.
+                raise OSError("Windows publication requires inherited destination ACL")
             os.link(source, target)
             created = True
         except FileExistsError as exc:
             raise HeadlessHwpxError(f"출력 대상이 이미 존재해 덮어쓸 수 없음: {target}") from exc
         except OSError:
-            # 하드링크를 지원하지 않는 파일시스템에서는 O_EXCL로 새 파일만 만든다.
+            # Windows 또는 하드링크 미지원 파일시스템: 기존 대상을 덮어쓰지 않음.
             try:
                 descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
             except FileExistsError as exc:
@@ -252,6 +257,8 @@ def publish_new_file(source: Path, target: Path) -> None:
                 output.flush()
                 os.fsync(output.fileno())
         read_hwpx(target)
+        if sha256_file(source) != sha256_file(target):
+            raise HeadlessHwpxError("게시 전후 파일 내용 SHA-256 불일치")
     except BaseException:
         if created:
             target.unlink(missing_ok=True)

@@ -146,6 +146,8 @@ def sync_shared_resources() -> None:
     for skill_name in ALL_SKILLS:
         copy_file("shared/core/13-skill-backup-retention.md",
                   SKILLS_ROOT / skill_name / "references" / "13-skill-backup-retention.md")
+        copy_file("shared/core/14-task-execution.md",
+                  SKILLS_ROOT / skill_name / "references" / "14-task-execution.md")
     budget = SKILLS_ROOT / "ax1-budget"
     for source, target in (
         ("shared/core/12-user-confirmation-gate.md", "references/01-user-confirmation-gate.md"),
@@ -349,6 +351,19 @@ def validate_confirmation_gate() -> None:
             raise ValueError(f"{skill_name}: confirmation gate reference is not linked")
         if "별도 메시지" not in skill_text or "동의" not in skill_text:
             raise ValueError(f"{skill_name}: explicit subsequent-turn confirmation is missing")
+
+
+def validate_execution_guidance() -> None:
+    """Every installed skill must carry the same standalone execution policy."""
+    relative = "references/14-task-execution.md"
+    canonical = (ROOT / "shared/core/14-task-execution.md").read_bytes()
+    for name in ALL_SKILLS:
+        skill = SKILLS_ROOT / name
+        reference = skill / relative
+        if not reference.is_file() or reference.read_bytes() != canonical:
+            raise ValueError(f"{name}: execution guidance missing or stale")
+        if f"]({relative})" not in (skill / "SKILL.md").read_text(encoding="utf-8"):
+            raise ValueError(f"{name}: execution guidance not discoverable")
 
 
 def validate_hwpx_document_routing() -> None:
@@ -559,6 +574,7 @@ def validate_headless_scripts_are_stdlib_only() -> None:
         script_root / "format_headless_artifact.py",
         script_root / "check_headless_artifact.py",
         script_root / "build_headless_artifact.py",
+        script_root / "artifact_metadata.py",
     ]
     local_modules = {path.stem for path in paths}
     allowed = set(sys.stdlib_module_names) | local_modules
@@ -698,7 +714,7 @@ def validate_approved_hwpx_asset() -> None:
 
 
 def validate_headless_acceptance() -> None:
-    for test in ("headless_hwpx_acceptance_test.py", "headless_table_layout_test.py"):
+    for test in ("headless_hwpx_acceptance_test.py", "headless_table_layout_test.py", "hwpx_metadata_test.py"):
         result = subprocess.run(
             [sys.executable, str(ROOT / "scripts" / test)],
             cwd=ROOT,
@@ -740,6 +756,15 @@ def validate_skills() -> dict[str, str]:
         validate_openai_yaml(skill)
         validate_references(skill)
     validate_confirmation_gate()
+    validate_execution_guidance()
+    contract_test = subprocess.run(
+        [sys.executable, str(ROOT / "scripts/skill_contract_test.py")],
+        cwd=ROOT, capture_output=True, text=True, encoding="utf-8",
+        env=utf8_subprocess_env(),
+    )
+    if contract_test.returncode:
+        raise ValueError("skill resource contract test failed:\n"
+                         + contract_test.stdout + contract_test.stderr)
     validate_hwpx_document_routing()
     validate_installation_guides()
     validate_improvement_workflow()
@@ -821,7 +846,10 @@ def validate_packaged_hwpx_skill(version: str) -> None:
         "bizplan-hwpx/scripts/build_headless_artifact.py",
         "bizplan-hwpx/scripts/check_headless_artifact.py",
         "bizplan-hwpx/scripts/layout_headless_artifact.py",
+        "bizplan-hwpx/scripts/artifact_metadata.py",
+        "bizplan-hwpx/scripts/Test-HwpxAccess.ps1",
         "bizplan-hwpx/references/14-general-artifact-content-quality.md",
+        "bizplan-hwpx/references/15-document-control.md",
     }
     with zipfile.ZipFile(archive_path) as archive:
         missing = sorted(required - set(archive.namelist()))

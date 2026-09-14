@@ -568,7 +568,10 @@ def main() -> int:
                 4: ("2026-09-05", "v0.4", "네 번째", ""),
             },
         )
-        require_issue(C.check(saturated), "개정 이력", "빈 행이 없어")
+        # A full, valid history is readable. Only a subsequent append must stop
+        # for an explicitly reviewed table expansion, never reset past records.
+        if C.check(saturated):
+            raise AssertionError(f"정상 포화 이력 검사 실패: {C.check(saturated)}")
 
         missing_revision = temp / "DXS-AX-TST-개정표_누락-20260902-v0.1.hwpx"
         missing_entries = H.read_hwpx(output)

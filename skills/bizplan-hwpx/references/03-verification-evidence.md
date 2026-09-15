@@ -19,11 +19,13 @@
 
 ### 2. 의미 검증
 
+- 일반 산출물은 [본문 품질 검토](14-general-artifact-content-quality.md)로 readback 전체를 검토하고 내용 검토 상태를 별도 기록함. 아래 문자·값 일치는 내용의 타당성·완결성 통과를 뜻하지 않음
 - `get_document_text`로 핵심 제목·문안·기관 역할·기간·KPI readback
 - `get_table_text`로 수정한 모든 중요 표 좌표 readback
 - 이전 값이 남지 않았는지 전역 검색
 - 필수 플레이스홀더와 양식 안내문 잔존 여부 검사
 - 원본 SHA-256 불변 및 출력 SHA-256 기록
+- 승인 AX1 경량 문서는 DXS 파일명의 사업코드·문서유형·날짜·버전, 개정 이력 최신 날짜·버전, PDF·프리뷰·readback과 `산출물_버전이력.md`의 일치 확인. 미승인 코드·불일치·복수 토큰·부분 개정행은 후보 저장·승격 전에 차단
 
 ### 3. 페이지 프리뷰
 
@@ -75,7 +77,7 @@ upstream 증거 도구가 없거나 위 필드를 만들 수 없으면 임의 AX
 | `structure_verified` | 패키지·문서·재개방·open-safety와 readback 통과 |
 | `preview_reviewed` | 구조 검증과 근사 페이지 프리뷰 검토 통과 |
 | `hancom_observed_pass` | 한컴에서 전체 페이지 실제 관찰과 화면 증거 확보 |
-| `submission_candidate` | 위 검증과 `bizplan-preflight`, 담당자 승인이 모두 완료된 제출 후보 |
+| `submission_candidate` | 위 검증, 목적별 내용 검토(사업계획서 `bizplan-preflight`, 일반 산출물 14번 참조)와 담당자 승인이 모두 완료된 제출 후보 |
 
 낮은 상태를 높은 상태처럼 표현하지 않음
 

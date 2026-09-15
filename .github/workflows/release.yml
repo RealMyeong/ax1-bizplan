@@ -26,6 +26,9 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install presentation validation dependencies
+        run: python -m pip install "Pillow==12.3.0" "python-pptx==1.0.2"
+
       - name: Validate contributor PR policy
         if: github.event_name == 'pull_request'
         shell: bash
@@ -33,6 +36,9 @@ jobs:
 
       - name: Validate skills and build packages
         run: python scripts/build_release.py
+
+      - name: Validate public guide packaging
+        run: python scripts/pages_test.py
 
       - name: Verify release tag matches VERSION
         if: startsWith(github.ref, 'refs/tags/')
@@ -71,7 +77,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: >-
           gh release create "$GITHUB_REF_NAME"
-          dist/*.zip dist/skills/*.zip dist/SHA256SUMS.txt
+          dist/*.zip dist/SHA256SUMS.txt
           --verify-tag
-          --title "AX1 Bizplan $GITHUB_REF_NAME"
+          --title "AX1 Skill Pack $GITHUB_REF_NAME"
           --notes-file dist/RELEASE_NOTES.md

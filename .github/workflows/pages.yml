@@ -1,0 +1,100 @@
+name: Publish user guide
+
+on:
+  # Releases created with GITHUB_TOKEN do not trigger release workflows.
+  # Wait for the existing validation + publication workflow to finish instead.
+  workflow_run:
+    workflows: [Validate and release]
+    types: [completed]
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: >-
+      github.repository == 'RealMyeong/ax1-bizplan' &&
+      (github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.full_name == github.repository))
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+    steps:
+      # Never execute PR code or consume artifacts from the triggering run.
+      - name: Check out trusted publishing tools
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+          path: publisher
+
+      - name: Resolve latest stable release and immutable commit
+        id: release
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: release } = await github.rest.repos.getLatestRelease(context.repo);
+            if (release.draft || release.prerelease || !/^v\d+\.\d+\.\d+$/.test(release.tag_name)) {
+              throw new Error('A published stable semantic-version release is required');
+            }
+            const { data: ref } = await github.rest.git.getRef({ ...context.repo, ref: `tags/${release.tag_name}` });
+            let object = ref.object;
+            for (let depth = 0; object.type === 'tag' && depth < 5; depth++) {
+              const { data: tag } = await github.rest.git.getTag({ ...context.repo, tag_sha: object.sha });
+              object = tag.object;
+            }
+            if (object.type !== 'commit' || !/^[0-9a-f]{40}$/.test(object.sha)) {
+              throw new Error('Release tag must resolve to a commit');
+            }
+            core.setOutput('tag', release.tag_name);
+            core.setOutput('commit', object.sha);
+            core.setOutput('published_at', release.published_at);
+
+      - name: Check out released content only
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.release.outputs.commit }}
+          persist-credentials: false
+          path: released
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Validate publisher and build allowlisted public files
+        env:
+          GUIDE_TAG: ${{ steps.release.outputs.tag }}
+          GUIDE_COMMIT: ${{ steps.release.outputs.commit }}
+          GUIDE_PUBLISHED_AT: ${{ steps.release.outputs.published_at }}
+        run: |
+          python publisher/scripts/pages_test.py
+          python publisher/scripts/build_pages.py --source-root released --tag "$GUIDE_TAG" --commit "$GUIDE_COMMIT" --published-at "$GUIDE_PUBLISHED_AT" --output _site
+
+      - name: Upload guide only
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy guide
+        id: deployment
+        uses: actions/deploy-pages@v4

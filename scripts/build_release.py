@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Synchronize, validate, and package the AX1 Bizplan skill suite."""
+"""Synchronize, validate, and package the AX1 Skill Pack."""
 
 from __future__ import annotations
 
@@ -7,10 +7,12 @@ import importlib.util
 import ast
 import hashlib
 import json
+import os
 import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import zipfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -27,7 +29,6 @@ SKILLS_ROOT = ROOT / "skills"
 DIST_ROOT = ROOT / "dist"
 PLUGIN_NAME = "ax1-bizplan"
 REPOSITORY_URL = "https://github.com/RealMyeong/ax1-bizplan"
-FEEDBACK_FORM_URL = "https://forms.gle/GG6GYrgboA4pnkVE6"
 FORBIDDEN_ARTIFACT_SUFFIXES = {
     ".hwp",
     ".hwpx",
@@ -53,10 +54,24 @@ ALL_SKILLS = (
     "bizplan-hwpx",
     "bizplan-artifact-format",
     "bizplan-evidence-update",
+    "ax1-presentation",
+    "ax1-budget",
+)
+
+INSTALLATION_GUIDES = (
+    "README.md",
+    "docs/team-guide.md",
+    "docs/ax1-bizplan-guide.html",
 )
 
 APPROVED_HWPX_ASSET = Path("skills/bizplan-hwpx/assets/templates/ax1-deliverable-cover.hwpx")
 HWPX_TEMPLATE_MANIFEST = Path("skills/bizplan-hwpx/assets/templates/template-manifest.json")
+APPROVED_XLSX_ASSET = Path("skills/ax1-budget/assets/templates/ax1-budget-ledger.xlsx")
+# User-approved synthetic output, not a reusable template or arbitrary document exemption.
+APPROVED_HWPX_EXAMPLES = {
+    Path("examples/hwpx/DXS-AX-TST-표흐름_합성검증-20260907-v0.1.hwpx"):
+        "8740253bf457f89fbbab9592a2712f4f0aacd71b2e07cbe546f120a2c3313880",
+}
 CONTRIBUTOR_POLICY_FILES = (
     "AGENTS.md",
     "CLAUDE.md",
@@ -65,6 +80,14 @@ CONTRIBUTOR_POLICY_FILES = (
     ".github/PULL_REQUEST_TEMPLATE.md",
     "scripts/validate_pr.py",
 )
+
+
+def utf8_subprocess_env() -> dict[str, str]:
+    env = os.environ.copy()
+    env["PYTHONUTF8"] = "1"
+    env["PYTHONIOENCODING"] = "utf-8"
+    return env
+
 
 GENERAL_REFERENCES = {
     "01-core-principles.md": "shared/core/01-core-principles.md",
@@ -108,6 +131,8 @@ CONFIRMATION_REFERENCES = {
     "bizplan-hwpx": "references/07-user-confirmation-gate.md",
     "bizplan-artifact-format": "references/05-user-confirmation-gate.md",
     "bizplan-evidence-update": "references/06-user-confirmation-gate.md",
+    "ax1-presentation": "references/05-user-confirmation-gate.md",
+    "ax1-budget": "references/01-user-confirmation-gate.md",
 }
 
 
@@ -120,6 +145,20 @@ def copy_file(source: str, target: Path) -> None:
 
 
 def sync_shared_resources() -> None:
+    for skill_name in ALL_SKILLS:
+        copy_file("shared/core/13-skill-backup-retention.md",
+                  SKILLS_ROOT / skill_name / "references" / "13-skill-backup-retention.md")
+        copy_file("shared/core/14-task-execution.md",
+                  SKILLS_ROOT / skill_name / "references" / "14-task-execution.md")
+    budget = SKILLS_ROOT / "ax1-budget"
+    for source, target in (
+        ("shared/core/12-user-confirmation-gate.md", "references/01-user-confirmation-gate.md"),
+        ("shared/core/10-artifact-version-management.md", "references/03-artifact-version-management.md"),
+        ("shared/core/11-artifact-synchronization.md", "references/04-artifact-synchronization.md"),
+        ("shared/templates/artifact-version-ledger-template.md", "assets/artifact-version-ledger-template.md"),
+        ("shared/templates/artifact-sync-ledger-template.md", "assets/artifact-sync-ledger-template.md"),
+    ):
+        copy_file(source, budget / target)
     for skill_name in GENERAL_SKILLS:
         skill = SKILLS_ROOT / skill_name
         for target_name, source in GENERAL_REFERENCES.items():
@@ -173,6 +212,26 @@ def sync_shared_resources() -> None:
     copy_file(
         "shared/templates/artifact-sync-ledger-template.md",
         SKILLS_ROOT / "bizplan-hwpx" / "assets" / "artifact-sync-ledger-template.md",
+    )
+    copy_file(
+        "shared/core/12-user-confirmation-gate.md",
+        SKILLS_ROOT / "ax1-presentation" / "references" / "05-user-confirmation-gate.md",
+    )
+    copy_file(
+        "shared/core/10-artifact-version-management.md",
+        SKILLS_ROOT / "ax1-presentation" / "references" / "06-artifact-version-management.md",
+    )
+    copy_file(
+        "shared/core/11-artifact-synchronization.md",
+        SKILLS_ROOT / "ax1-presentation" / "references" / "07-artifact-synchronization.md",
+    )
+    copy_file(
+        "shared/templates/artifact-version-ledger-template.md",
+        SKILLS_ROOT / "ax1-presentation" / "assets" / "artifact-version-ledger-template.md",
+    )
+    copy_file(
+        "shared/templates/artifact-sync-ledger-template.md",
+        SKILLS_ROOT / "ax1-presentation" / "assets" / "artifact-sync-ledger-template.md",
     )
 
 
@@ -253,18 +312,24 @@ def validate_plugin() -> None:
 
 
 def validate_no_private_artifacts() -> None:
+    excluded_roots = {".git", ".uv-cache", "dist", "tmp", "__pycache__"}
     forbidden = [
         path.relative_to(ROOT).as_posix()
-        for path in SKILLS_ROOT.rglob("*")
+        for path in ROOT.rglob("*")
         if path.is_file()
+        and not any(part in excluded_roots for part in path.relative_to(ROOT).parts)
         and path.suffix.lower() in FORBIDDEN_ARTIFACT_SUFFIXES
-        and path.relative_to(ROOT) != APPROVED_HWPX_ASSET
+        and path.relative_to(ROOT) not in {APPROVED_HWPX_ASSET, APPROVED_XLSX_ASSET, *APPROVED_HWPX_EXAMPLES}
     ]
     if forbidden:
         raise ValueError(
             "skills contain forbidden document or credential artifacts: "
             + ", ".join(sorted(forbidden))
         )
+    for relative_path, digest in APPROVED_HWPX_EXAMPLES.items():
+        example = ROOT / relative_path
+        if not example.is_file() or hashlib.sha256(example.read_bytes()).hexdigest() != digest:
+            raise ValueError(f"approved synthetic HWPX example missing or SHA-256 mismatch: {relative_path}")
 
 
 def validate_confirmation_gate() -> None:
@@ -290,6 +355,183 @@ def validate_confirmation_gate() -> None:
             raise ValueError(f"{skill_name}: explicit subsequent-turn confirmation is missing")
 
 
+def validate_execution_guidance() -> None:
+    """Every installed skill must carry the same standalone execution policy."""
+    relative = "references/14-task-execution.md"
+    canonical = (ROOT / "shared/core/14-task-execution.md").read_bytes()
+    for name in ALL_SKILLS:
+        skill = SKILLS_ROOT / name
+        reference = skill / relative
+        if not reference.is_file() or reference.read_bytes() != canonical:
+            raise ValueError(f"{name}: execution guidance missing or stale")
+        if f"]({relative})" not in (skill / "SKILL.md").read_text(encoding="utf-8"):
+            raise ValueError(f"{name}: execution guidance not discoverable")
+
+
+def validate_hwpx_document_routing() -> None:
+    skill_text = (SKILLS_ROOT / "bizplan-hwpx" / "SKILL.md").read_text(encoding="utf-8")
+    routing_text = (
+        SKILLS_ROOT / "bizplan-hwpx" / "references" / "12-document-routing.md"
+    ).read_text(encoding="utf-8")
+    for token in (
+        "문서 목적",
+        "사업계획서 작성",
+        "일반 산출물 작성",
+        "요청이 명확하면",
+        "요청이 모호하면",
+        "입력자료 이름보다 사용자가 요청한 최종 산출물을 우선",
+        "상세 분기 규칙은 최초 동의 뒤",
+    ):
+        if token not in skill_text:
+            raise ValueError(f"bizplan-hwpx: document-purpose gate is missing: {token}")
+    required_concepts = {
+        "target artifact priority": (
+            ("입력자료 이름보다", "최종 산출물을 우선해 정한다"),
+        ),
+        "official business form": (
+            ("공고·RFP·제출기관 공식 양식",),
+            ("공고기관이 제공한 공식 양식",),
+        ),
+        "approved AX1 template": (
+            ("승인 AX1 템플릿",),
+            ("승인 AX1 산출물 템플릿",),
+        ),
+        "customer form override": (
+            ("계약·고객 필수 양식",),
+            ("계약·고객 양식",),
+        ),
+        "no pre-confirmation file read": (
+            ("파일명이나 첨부 내용", "사용자 동의 전에", "먼저 열지 않고"),
+        ),
+        "no duplicate confirmation": (("같은 확인을 반복하지 않는다",),),
+        "complete ambiguous-route summary": (
+            ("예상 입력·범위와 제외·산출물·가정과 위험",),
+        ),
+    }
+    for concept, alternative_groups in required_concepts.items():
+        if not any(
+            all(token in routing_text for token in required_tokens)
+            for required_tokens in alternative_groups
+        ):
+            raise ValueError(f"bizplan-hwpx: document routing concept is missing: {concept}")
+
+
+def validate_installation_guides() -> None:
+    for relative in INSTALLATION_GUIDES:
+        path = ROOT / relative
+        text = path.read_text(encoding="utf-8")
+        missing = [skill_name for skill_name in ALL_SKILLS if skill_name not in text]
+        if missing:
+            raise ValueError(f"{relative}: installation guide is missing skills: {missing}")
+        if f"{len(ALL_SKILLS)}개 스킬" not in text:
+            raise ValueError(f"{relative}: installation guide must state the complete skill set")
+
+
+def validate_improvement_workflow() -> None:
+    policy_files = (
+        "README.md",
+        "CONTRIBUTING.md",
+        "docs/team-guide.md",
+        "docs/maintainer-guide.md",
+        "docs/pr-operating-policy.md",
+        "docs/ax1-bizplan-guide.html",
+        "docs/ax1-skills-suite-roadmap.md",
+        "docs/feedback-intake-template.md",
+    )
+    for relative in policy_files:
+        text = (ROOT / relative).read_text(encoding="utf-8")
+        if "forms.gle" in text or "개선 요청 Form" in text:
+            raise ValueError(f"{relative}: retired Form-based improvement workflow remains")
+    team_guide = (ROOT / "docs" / "team-guide.md").read_text(encoding="utf-8")
+    for token in (
+        "AGENTS.md",
+        ".changes",
+        "PR을 생성",
+        "민감정보 없는 예시",
+        "Fork",
+        "Discussion",
+        "Issue",
+    ):
+        if token not in team_guide:
+            raise ValueError(f"team guide: agent-driven PR instruction missing: {token}")
+    weekly_files = (
+        "CONTRIBUTING.md",
+        "docs/team-guide.md",
+        "docs/maintainer-guide.md",
+        "docs/pr-operating-policy.md",
+        "docs/ax1-bizplan-guide.html",
+    )
+    for relative in weekly_files:
+        text = (ROOT / relative).read_text(encoding="utf-8")
+        for token in ("일요일", "월요일"):
+            if token not in text:
+                raise ValueError(f"{relative}: weekly PR/release cadence is missing: {token}")
+    for relative in ("CONTRIBUTING.md", "docs/team-guide.md", "docs/maintainer-guide.md"):
+        text = (ROOT / relative).read_text(encoding="utf-8")
+        if "팀원별" not in text and "기여자" not in text:
+            raise ValueError(f"{relative}: per-contributor release notes are missing")
+
+
+def validate_release_distribution() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    if "dist/skills/*.zip" in workflow:
+        raise ValueError("release workflow must not publish individual skill ZIPs")
+    for token in ("dist/*.zip dist/SHA256SUMS.txt", "--notes-file dist/RELEASE_NOTES.md"):
+        if token not in workflow:
+            raise ValueError(f"release workflow is missing the integrated-pack asset rule: {token}")
+
+    for relative in ("README.md", "docs/team-guide.md", "docs/maintainer-guide.md"):
+        text = (ROOT / relative).read_text(encoding="utf-8")
+        for token in ("통합 ZIP", "CI 내부"):
+            if token not in text:
+                raise ValueError(f"{relative}: integrated-only release guidance is missing: {token}")
+
+
+def validate_artifact_filename_policy() -> None:
+    canonical_path = ROOT / "shared" / "core" / "10-artifact-version-management.md"
+    canonical = canonical_path.read_bytes()
+    canonical_text = canonical.decode("utf-8")
+    standard = "DXS-[사업코드]-[문서유형]-[파일제목]-[YYYYMMDD]-vX.Y.[확장자]"
+    for token in (
+        standard,
+        "DXS-AX-STD-AX_통합_용어사전-20260903-v0.3.docx",
+        "PILAM6",
+        "기존 산출물은 일괄 개명하지 않음",
+        "제출기관·계약·고객",
+    ):
+        if token not in canonical_text:
+            raise ValueError(f"artifact filename policy is missing: {token}")
+    for code in ("STD", "MGT", "BUD", "REQ", "DES", "DEV", "TST", "DAT", "RPT", "EVD", "SOP", "MIN"):
+        if f"`{code}`" not in canonical_text:
+            raise ValueError(f"artifact filename policy is missing document type: {code}")
+
+    copies = {
+        "bizplan-prepare": "references/01-artifact-version-management.md",
+        "bizplan-draft": "references/10-artifact-version-management.md",
+        "bizplan-review": "references/10-artifact-version-management.md",
+        "bizplan-revise": "references/10-artifact-version-management.md",
+        "bizplan-preflight": "references/10-artifact-version-management.md",
+        "bizplan-hwpx": "references/05-artifact-version-management.md",
+        "ax1-presentation": "references/06-artifact-version-management.md",
+        "ax1-budget": "references/03-artifact-version-management.md",
+    }
+    for skill_name, relative in copies.items():
+        path = SKILLS_ROOT / skill_name / relative
+        if not path.is_file() or path.read_bytes() != canonical:
+            raise ValueError(f"{skill_name}: artifact filename/version policy is missing or stale")
+
+    hwpx_text = (SKILLS_ROOT / "bizplan-hwpx" / "scripts" / "headless_hwpx.py").read_text(
+        encoding="utf-8"
+    )
+    for token in ("COMPANY_CODE = \"DXS\"", "DOCUMENT_TYPE_CODES", "ARTIFACT_FILENAME_RE"):
+        if token not in hwpx_text:
+            raise ValueError(f"bizplan-hwpx: executable filename validation is missing: {token}")
+    for relative in ("README.md", "docs/team-guide.md", "docs/ax1-bizplan-guide.html"):
+        text = (ROOT / relative).read_text(encoding="utf-8")
+        if "DXS-[사업코드]-[문서유형]-[파일제목]-[YYYYMMDD]-vX.Y" not in text:
+            raise ValueError(f"{relative}: AX1 artifact filename guidance is missing")
+
+
 def validate_contributor_policy() -> None:
     for relative in CONTRIBUTOR_POLICY_FILES:
         path = ROOT / relative
@@ -298,10 +540,27 @@ def validate_contributor_policy() -> None:
     agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
     contributing = (ROOT / "CONTRIBUTING.md").read_text(encoding="utf-8")
     pr_template = (ROOT / ".github" / "PULL_REQUEST_TEMPLATE.md").read_text(encoding="utf-8")
-    for token in ("VERSION", ".changes/", "confirmation gate", "HWPX"):
+    for token in (
+        "VERSION",
+        ".changes/",
+        "confirmation gate",
+        "HWPX",
+        "Discussion",
+        "Issue",
+        "Fork",
+    ):
         if token not in agents:
             raise ValueError(f"AGENTS.md: required contributor rule missing: {token}")
-    for token in ("VERSION", ".changes/", "개인정보", "배포자"):
+    for token in (
+        "VERSION",
+        ".changes/",
+        "개인정보",
+        "배포자",
+        "Discussion",
+        "Issue",
+        "Fork",
+        "upstream/main",
+    ):
         if token not in contributing:
             raise ValueError(f"CONTRIBUTING.md: required policy missing: {token}")
     for token in ("본문과 표 셀 줄간격 160%", ".changes/<주제>.md", "한컴 시각 검증"):
@@ -313,9 +572,11 @@ def validate_headless_scripts_are_stdlib_only() -> None:
     script_root = SKILLS_ROOT / "bizplan-hwpx" / "scripts"
     paths = [
         script_root / "headless_hwpx.py",
+        script_root / "layout_headless_artifact.py",
         script_root / "format_headless_artifact.py",
         script_root / "check_headless_artifact.py",
         script_root / "build_headless_artifact.py",
+        script_root / "artifact_metadata.py",
     ]
     local_modules = {path.stem for path in paths}
     allowed = set(sys.stdlib_module_names) | local_modules
@@ -332,6 +593,37 @@ def validate_headless_scripts_are_stdlib_only() -> None:
             raise ValueError(f"{path.relative_to(ROOT)} imports non-stdlib modules: {external}")
 
 
+def validate_presentation_scripts_are_local_only() -> None:
+    script_root = SKILLS_ROOT / "ax1-presentation" / "scripts"
+    paths = [
+        script_root / "assemble_image_deck.py",
+        script_root / "check_presentation.py",
+    ]
+    allowed_external = {"PIL", "pptx"}
+    forbidden = {"httpx", "openai", "requests", "socket", "urllib"}
+    for path in paths:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        imported = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported.update(alias.name.split(".")[0] for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                imported.add(node.module.split(".")[0])
+        disallowed = sorted(imported & forbidden)
+        external = sorted(imported - set(sys.stdlib_module_names) - allowed_external)
+        if disallowed or external:
+            raise ValueError(
+                f"{path.relative_to(ROOT)} has disallowed imports: "
+                f"forbidden={disallowed}, unexpected={external}"
+            )
+    requirements = (SKILLS_ROOT / "ax1-presentation" / "requirements.txt").read_text(
+        encoding="utf-8"
+    )
+    normalized = {line.split(">=")[0].strip() for line in requirements.splitlines() if line.strip()}
+    if normalized != {"Pillow", "python-pptx"}:
+        raise ValueError("ax1-presentation requirements must be limited to Pillow and python-pptx")
+
+
 def validate_approved_hwpx_asset() -> None:
     asset = ROOT / APPROVED_HWPX_ASSET
     manifest_path = ROOT / HWPX_TEMPLATE_MANIFEST
@@ -344,6 +636,16 @@ def validate_approved_hwpx_asset() -> None:
     for key, value in expected.items():
         if manifest.get(key) != value:
             raise ValueError(f"template manifest: {key} must be {value!r}")
+    if not manifest.get("approvedBy"):
+        raise ValueError("template manifest: approvedBy is missing")
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", manifest.get("approvedOn", "")):
+        raise ValueError("template manifest: approvedOn must use YYYY-MM-DD")
+    if "individual-skill ZIPs" not in manifest.get("distribution", ""):
+        raise ValueError("template manifest: individual-skill distribution is missing")
+    if manifest.get("sanitized") is not True:
+        raise ValueError("template manifest: sanitized must be true")
+    if "general HWPX deliverables" not in manifest.get("purpose", ""):
+        raise ValueError("template manifest: general-deliverable purpose is missing")
     actual_sha = hashlib.sha256(asset.read_bytes()).hexdigest()
     if manifest.get("sha256") != actual_sha:
         raise ValueError("approved HWPX template SHA-256 mismatch")
@@ -414,16 +716,32 @@ def validate_approved_hwpx_asset() -> None:
 
 
 def validate_headless_acceptance() -> None:
+    for test in ("headless_hwpx_acceptance_test.py", "headless_table_layout_test.py", "hwpx_metadata_test.py"):
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / test)],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            env=utf8_subprocess_env(),
+        )
+        if result.returncode != 0:
+            raise ValueError("headless HWPX acceptance test failed (" + test + "):\n"
+                             + result.stdout + result.stderr)
+
+
+def validate_presentation_acceptance() -> None:
     result = subprocess.run(
-        [sys.executable, str(ROOT / "scripts" / "headless_hwpx_acceptance_test.py")],
+        [sys.executable, str(ROOT / "scripts" / "presentation_acceptance_test.py")],
         cwd=ROOT,
         capture_output=True,
         text=True,
         encoding="utf-8",
+        env=utf8_subprocess_env(),
     )
     if result.returncode != 0:
         raise ValueError(
-            "headless HWPX acceptance test failed:\n"
+            "presentation acceptance test failed:\n"
             + result.stdout
             + result.stderr
         )
@@ -440,13 +758,60 @@ def validate_skills() -> dict[str, str]:
         validate_openai_yaml(skill)
         validate_references(skill)
     validate_confirmation_gate()
+    validate_execution_guidance()
+    contract_test = subprocess.run(
+        [sys.executable, str(ROOT / "scripts/skill_contract_test.py")],
+        cwd=ROOT, capture_output=True, text=True, encoding="utf-8",
+        env=utf8_subprocess_env(),
+    )
+    if contract_test.returncode:
+        raise ValueError("skill resource contract test failed:\n"
+                         + contract_test.stdout + contract_test.stderr)
+    validate_hwpx_document_routing()
+    validate_installation_guides()
+    validate_improvement_workflow()
+    validate_release_distribution()
+    validate_artifact_filename_policy()
+    validate_skill_backup_policy()
+    validate_budget_acceptance()
     validate_contributor_policy()
     validate_headless_scripts_are_stdlib_only()
+    validate_presentation_scripts_are_local_only()
     validate_approved_hwpx_asset()
     validate_headless_acceptance()
+    validate_presentation_acceptance()
     validate_lint_examples()
     validate_plugin()
     return versions
+
+
+def validate_skill_backup_policy() -> None:
+    canonical = (ROOT / "shared/core/13-skill-backup-retention.md").read_bytes()
+    reference = "references/13-skill-backup-retention.md"
+    for name in ALL_SKILLS:
+        skill = SKILLS_ROOT / name
+        if (skill / reference).read_bytes() != canonical:
+            raise ValueError(f"{name}: backup policy missing or stale")
+        if f"]({reference})" not in (skill / "SKILL.md").read_text(encoding="utf-8"):
+            raise ValueError(f"{name}: backup policy is unreachable")
+    for relative in (*INSTALLATION_GUIDES, "docs/maintainer-guide.md"):
+        text = (ROOT / relative).read_text(encoding="utf-8")
+        if "직전" not in text or "백업" not in text:
+            raise ValueError(f"{relative}: previous-version backup guidance missing")
+    if (SKILLS_ROOT / "ax1-budget/references/04-artifact-synchronization.md").read_bytes() != (
+        ROOT / "shared/core/11-artifact-synchronization.md"
+    ).read_bytes():
+        raise ValueError("ax1-budget: synchronization policy stale")
+
+
+def validate_budget_acceptance(packaged: bool = False) -> None:
+    command = [sys.executable, str(ROOT / "scripts/budget_acceptance_test.py")]
+    if packaged:
+        command.append("--packages")
+    result = subprocess.run(command, cwd=ROOT, capture_output=True, text=True,
+                            encoding="utf-8", env=utf8_subprocess_env())
+    if result.returncode:
+        raise ValueError("budget acceptance failed:\n" + result.stdout + result.stderr)
 
 
 def add_tree(archive: zipfile.ZipFile, source_root: Path, archive_root: Path) -> None:
@@ -474,13 +839,137 @@ def build_zips(versions: dict[str, str]) -> None:
         add_tree(archive, SKILLS_ROOT, Path(PLUGIN_NAME) / "skills")
 
 
+def validate_packaged_hwpx_skill(version: str) -> None:
+    archive_path = DIST_ROOT / "skills" / f"bizplan-hwpx-v{version}.zip"
+    required = {
+        "bizplan-hwpx/SKILL.md",
+        "bizplan-hwpx/assets/templates/ax1-deliverable-cover.hwpx",
+        "bizplan-hwpx/assets/templates/template-manifest.json",
+        "bizplan-hwpx/scripts/build_headless_artifact.py",
+        "bizplan-hwpx/scripts/check_headless_artifact.py",
+        "bizplan-hwpx/scripts/layout_headless_artifact.py",
+        "bizplan-hwpx/scripts/artifact_metadata.py",
+        "bizplan-hwpx/scripts/Test-HwpxAccess.ps1",
+        "bizplan-hwpx/references/14-general-artifact-content-quality.md",
+        "bizplan-hwpx/references/15-document-control.md",
+    }
+    with zipfile.ZipFile(archive_path) as archive:
+        missing = sorted(required - set(archive.namelist()))
+        if missing:
+            raise ValueError("individual HWPX skill ZIP is incomplete: " + ", ".join(missing))
+        with tempfile.TemporaryDirectory(prefix="ax1-hwpx-package-") as temp_dir:
+            root = Path(temp_dir)
+            archive.extractall(root)
+            skill = root / "bizplan-hwpx"
+            packaged_manifest = json.loads(
+                (skill / "assets" / "templates" / "template-manifest.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            packaged_template = skill / "assets" / "templates" / packaged_manifest["file"]
+            if hashlib.sha256(packaged_template.read_bytes()).hexdigest() != packaged_manifest["sha256"]:
+                raise ValueError("individual HWPX skill ZIP template SHA-256 mismatch")
+            content = root / "general-deliverable.md"
+            output = root / "DXS-AX-DAT-데이터_수집_정의서-20260902-v0.1.hwpx"
+            content.write_text(
+                "# 1. 데이터 수집 정의서\n\n"
+                "## 1.1 목적\n\n"
+                "### 1.1.1 처리 절차\n\n"
+                "#### 1.1.1.1 검증 기준\n\n"
+                "- ☑ 한글 산출물 검증\n\n"
+                "| 구분 | 내용 |\n"
+                "|---|---|\n"
+                "| 상태 | 정상 |\n",
+                encoding="utf-8",
+            )
+            build = subprocess.run(
+                [
+                    sys.executable,
+                    str(skill / "scripts" / "build_headless_artifact.py"),
+                    "--content", str(content),
+                    "--agency", "테스트 발주기관",
+                    "--program", "테스트 사업",
+                    "--project-number", "TEST-0000",
+                    "--project", "테스트 프로젝트",
+                    "--title", "데이터 수집 정의서",
+                    "--document-type", "정의서",
+                    "--artifact-version", "v0.1",
+                    "--revision-note", "최초 작성",
+                    "--revision-author", "테스트 작성자",
+                    "--revision-date", "2026-09-02",
+                    "-o", str(output),
+                ],
+                cwd=root,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                env=utf8_subprocess_env(),
+            )
+            if build.returncode != 0:
+                raise ValueError("individual HWPX skill ZIP build failed:\n" + build.stdout + build.stderr)
+            check = subprocess.run(
+                [
+                    sys.executable,
+                    str(skill / "scripts" / "check_headless_artifact.py"),
+                    str(output),
+                ],
+                cwd=root,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                env=utf8_subprocess_env(),
+            )
+            if check.returncode != 0:
+                raise ValueError("individual HWPX skill ZIP check failed:\n" + check.stdout + check.stderr)
+            with zipfile.ZipFile(output) as generated:
+                readback = generated.read("Contents/section0.xml").decode("utf-8")
+            for token in (
+                "데이터 수집 정의서",
+                "정의서",
+                "2026-09-02",
+                "v0.1",
+                "최초 작성",
+                "테스트 작성자",
+                "• 검증 기준",
+                "• ☑ 한글 산출물 검증",
+                "구분",
+                "정상",
+            ):
+                if token not in readback:
+                    raise ValueError(f"individual HWPX skill ZIP readback missing: {token}")
+
+
 def write_checksums() -> None:
-    paths = sorted(DIST_ROOT.rglob("*.zip"))
+    paths = [DIST_ROOT / f"{PLUGIN_NAME}-v{SUITE_VERSION}.zip"]
     lines = []
     for path in paths:
+        if not path.is_file():
+            raise FileNotFoundError(path)
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
         lines.append(f"{digest}  {path.relative_to(DIST_ROOT).as_posix()}")
     (DIST_ROOT / "SHA256SUMS.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def validate_distribution_outputs(versions: dict[str, str]) -> None:
+    public_zip = DIST_ROOT / f"{PLUGIN_NAME}-v{SUITE_VERSION}.zip"
+    checksum_lines = (DIST_ROOT / "SHA256SUMS.txt").read_text(encoding="utf-8").splitlines()
+    if len(checksum_lines) != 1 or not checksum_lines[0].endswith(f"  {public_zip.name}"):
+        raise ValueError("SHA256SUMS.txt must contain only the integrated public ZIP")
+    expected_digest = hashlib.sha256(public_zip.read_bytes()).hexdigest()
+    if checksum_lines[0].split("  ", 1)[0] != expected_digest:
+        raise ValueError("integrated public ZIP checksum mismatch")
+
+    internal_zips = sorted((DIST_ROOT / "skills").glob("*.zip"))
+    expected_internal = {
+        f"{skill_name}-v{versions[skill_name]}.zip" for skill_name in ALL_SKILLS
+    }
+    actual_internal = {path.name for path in internal_zips}
+    if actual_internal != expected_internal:
+        raise ValueError(
+            "CI-internal skill ZIP set mismatch; "
+            f"missing={sorted(expected_internal - actual_internal)}, "
+            f"extra={sorted(actual_internal - expected_internal)}"
+        )
 
 
 def changelog_section(version: str) -> str:
@@ -512,7 +1001,7 @@ def changelog_section(version: str) -> str:
 def write_release_notes(versions: dict[str, str]) -> None:
     highlights = changelog_section(SUITE_VERSION)
     lines = [
-        f"# AX1 Bizplan v{SUITE_VERSION}",
+        f"# AX1 Skill Pack v{SUITE_VERSION}",
         "",
         "## 주요 변경사항",
         "",
@@ -520,10 +1009,12 @@ def write_release_notes(versions: dict[str, str]) -> None:
         "",
         "## 설치·업데이트",
         "",
-        f"- 전체 묶음: `{PLUGIN_NAME}-v{SUITE_VERSION}.zip`",
-        "- 필요한 스킬만 설치할 때: Release의 개별 스킬 ZIP",
+        f"- 공개 배포 자산: 통합 ZIP `{PLUGIN_NAME}-v{SUITE_VERSION}.zip`과 `SHA256SUMS.txt`",
+        f"- AX1 팀 표준 업데이트는 통합 ZIP의 {len(ALL_SKILLS)}개 스킬을 함께 설치·교체",
+        "- 개별 스킬 ZIP은 CI 격리 검증에만 사용하며 GitHub Release 자산으로 공개하지 않음",
         "- 다운로드 후 `SHA256SUMS.txt`로 파일 무결성 확인",
         "- 업데이트 전 기존 사용자 스킬을 백업한 뒤 새 버전 설치",
+        "- 업데이트 성공·검증 후 직전 설치 버전 백업 한 묶음만 유지하고 확인된 오래된 스킬 백업은 삭제. 산출물 이전버전 보관함은 제외",
         "",
         "## 포함 스킬",
         "",
@@ -538,7 +1029,7 @@ def write_release_notes(versions: dict[str, str]) -> None:
             "",
             f"- [전체 변경이력]({REPOSITORY_URL}/blob/v{SUITE_VERSION}/CHANGELOG.md)",
             f"- [팀원 설치·활용 안내]({REPOSITORY_URL}/blob/v{SUITE_VERSION}/docs/team-guide.md)",
-            f"- [개선 요청 Form]({FEEDBACK_FORM_URL})",
+            f"- [개선 PR 안내]({REPOSITORY_URL}/blob/v{SUITE_VERSION}/CONTRIBUTING.md)",
             "",
         ]
     )
@@ -552,8 +1043,11 @@ def main() -> int:
     sync_shared_resources()
     versions = validate_skills()
     build_zips(versions)
+    validate_packaged_hwpx_skill(versions["bizplan-hwpx"])
+    validate_budget_acceptance(packaged=True)
     write_release_notes(versions)
     write_checksums()
+    validate_distribution_outputs(versions)
     version_summary = ", ".join(f"{name}=v{version}" for name, version in versions.items())
     print(f"Built {PLUGIN_NAME} v{SUITE_VERSION}: {version_summary}")
     return 0

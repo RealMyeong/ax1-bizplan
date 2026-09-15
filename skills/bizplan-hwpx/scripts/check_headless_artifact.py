@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.dont_write_bytecode = True
 
 import headless_hwpx as H  # noqa: E402
+import layout_headless_artifact as L  # noqa: E402
 
 # 한/글은 셀 안에서 글자를 조금 압축해 넣으므로 실제 글자 폭이 줄 용량을 다소 넘어도
 # 정상이다. 한/글이 직접 배치한 문서를 재어 정한 값이다.
@@ -56,10 +57,34 @@ def check(path: Path) -> list:
             )
 
     # 0. 불가침 구간 경계
+    is_ax1_artifact = H.ax1_front_matter_signature(section, body_start)
     if body_start is None:
         add("불가침 구간", "목차 문단을 찾지 못해 본문 시작 위치를 판정할 수 없음. 사용자 확인 필요")
         body_start = 0
     front_fills = H.front_matter_fill_ids(section, body_start)
+
+    # 0-2. 이 검사기는 승인 AX1 경량 생성물 전용이므로 표지 시그니처도 fail-closed로 본다.
+    if not is_ax1_artifact:
+        add("승인 템플릿 경계", "AX1 표지·문서정보 시그니처를 확인할 수 없음")
+    else:
+        revision_spans = H.revision_table_spans(section, body_start)
+        if len(revision_spans) != 1:
+            add("개정 이력", f"정확한 개정 이력표가 1개가 아님: {len(revision_spans)}개")
+            expected_version = None
+            expected_revision_date = None
+        else:
+            start, end = revision_spans[0]
+            analysis = H.analyze_revision_table(
+                section[start:end],
+                require_record=True,
+                require_empty_row=False,
+            )
+            for detail in analysis.issues:
+                add("개정 이력", detail)
+            expected_version = analysis.records[-1].version if analysis.records else None
+            expected_revision_date = analysis.records[-1].date if analysis.records else None
+        for detail in H.artifact_filename_issues(path, expected_version, expected_revision_date):
+            add("파일명 규칙", detail)
 
     # 1. 글꼴 - 불가침 표지는 템플릿 그대로 두고 생성 본문만 검사한다.
     if not malgun_ids:
@@ -136,6 +161,177 @@ def check(path: Path) -> list:
         if shared:
             add("줄간격", f"본문과 표 셀이 문단모양 {', '.join(sorted(shared))} 을 공유해 한쪽이 반드시 틀어짐")
 
+    # 3-1. 숫자 제목은 실제 U+0020 앞 공백으로 표현한다. 본문 목록은 실제 줄바꿈에
+    # 대응하도록 텍스트 앞 공백 없이 문단 왼쪽 들여쓰기+첫 줄 내어쓰기를 사용한다.
+    heading_levels_by_height = {1500: 1, 1200: 2, 1050: 3}
+    heading_styles = H.style_ids_by_name(header)
+    top_level = []
+    width_match = H.re.search(
+        r'<hp:pagePr[^>]*width="(\d+)"[^>]*>.*?<hp:margin[^>]*left="(\d+)" right="(\d+)"',
+        section,
+        H.re.S,
+    )
+    text_width = (
+        int(width_match.group(1)) - int(width_match.group(2)) - int(width_match.group(3))
+        if width_match
+        else 42520
+    )
+    bullet_prefix_width = None
+    first_heading_style = heading_styles.get('개요 1')
+    in_main_body = not any(
+        L.attr(para, 'styleIDRef') == first_heading_style
+        for off, _, para in L.top_paragraphs(section) if off >= body_start
+    )
+    if not regular.portable:
+        bullet_prefix_width, _ = H.text_width(
+            "• ",
+            H.BODY_TEXT_HEIGHT,
+            False,
+            regular,
+            boldfont,
+        )
+    for offset, attrs, body in H.paragraphs(section):
+        if offset < body_start or H.in_any_span(spans, offset):
+            continue
+        if "<hp:tbl " in body:
+            top_level.append({"kind": "table", "level": None, "pid": None, "attrs": attrs, "text": ""})
+            continue
+        pid_match = H.re.search(r'paraPrIDRef="(\d+)"', attrs)
+        run_match = H.re.search(r'<hp:run charPrIDRef="(\d+)">(.*?)</hp:run>', body, H.re.S)
+        if not run_match:
+            continue
+        text = H.unescape("".join(H.re.findall(r"<hp:t>([^<]*)</hp:t>", run_match.group(2))))
+        if not text:
+            continue
+        char_pr = char_prs.get(run_match.group(1))
+        heading_level = (
+            heading_levels_by_height.get(char_pr.height)
+            if char_pr and char_pr.bold
+            else None
+        )
+        expected = H.HEADING_PREFIX_SPACES.get(heading_level)
+        stripped = text.lstrip()
+        if char_pr and char_pr.bold and H.re.match(
+            rf"^\d+(?:\.\d+){{{H.MAX_HEADING_LEVEL},}}\.?\s+",
+            stripped,
+        ):
+            add(
+                "개요 수준",
+                f"숫자 제목이 허용된 {H.MAX_HEADING_LEVEL}단계를 초과함 :: {stripped[:34]!r}",
+            )
+        pid = pid_match.group(1) if pid_match else None
+        if heading_level:
+            if heading_level == 1:
+                in_main_body = True
+            if text != " " * expected + stripped:
+                add(
+                    "개요 수준 들여쓰기",
+                    f"앞 공백이 일반 반각 공백 {expected}개가 아님 :: {text[:34]!r}",
+                )
+            if pid and (
+                para_prs.get(pid, {}).get("left") != 0
+                or para_prs.get(pid, {}).get("intent") != 0
+            ):
+                add(
+                    "개요 수준 들여쓰기",
+                    f"문단모양 {pid}의 왼쪽·첫 줄 들여쓰기가 0이 아니어서 제목 앞 공백과 중복됨",
+                )
+            expected_style = heading_styles.get(f"개요 {heading_level}")
+            got_style = H.re.search(r'styleIDRef="(\d+)"', attrs)
+            if expected_style is None or not got_style or got_style.group(1) != expected_style:
+                add(
+                    "개요 수준 스타일",
+                    f"수준 {heading_level} 제목의 styleIDRef가 개요 {heading_level}과 일치하지 않음",
+                )
+            top_level.append(
+                {"kind": "heading", "level": heading_level, "pid": pid, "attrs": attrs, "text": text}
+            )
+            continue
+
+        list_prefix = H.re.match(r'^(• |\d+\.\s+)', stripped) if in_main_body else None
+        if list_prefix:
+            prefix = list_prefix.group(1)
+            expected_left, expected_intent = L.list_margins(prefix, regular, boldfont)
+            props = para_prs.get(pid, {}) if pid else {}
+            if text != stripped:
+                add(
+                    "본문 목록 들여쓰기",
+                    f"글머리표 앞에 일반 공백이 남아 문단 들여쓰기와 중복됨 :: {text[:34]!r}",
+                )
+            if (
+                props.get("left") != expected_left
+                or props.get("intent") != expected_intent
+            ):
+                add(
+                    "본문 목록 들여쓰기",
+                    f"문단모양 {pid}의 왼쪽·첫 줄 값이 "
+                    f"{props.get('left')}·{props.get('intent')} (규칙 "
+                    f"{expected_left}·{expected_intent})",
+                )
+            if H.BODY_LIST_BULLET_POSITION != (
+                H.BODY_LIST_LEFT_INDENT + H.BODY_LIST_FIRST_LINE_INDENT
+            ):
+                add("본문 목록 들여쓰기", "글머리표 위치와 문단 hanging indent 상수의 관계가 일치하지 않음")
+            if prefix == '• ' and bullet_prefix_width is not None and abs(
+                H.BODY_LIST_BULLET_POSITION + bullet_prefix_width - H.BODY_LIST_LEFT_INDENT
+            ) > 100:
+                add("본문 목록 들여쓰기", "글머리표 폭과 후속 줄 본문 시작 위치가 1 HWPUNIT 기준값을 초과함")
+            line_segs = [
+                (int(match.group(1)), int(match.group(2)), int(match.group(3)))
+                for match in H.re.finditer(
+                    r'<hp:lineseg [^>]*textpos="(\d+)"[^>]*horzpos="(-?\d+)"[^>]*horzsize="(\d+)"',
+                    body,
+                )
+            ]
+            if not line_segs:
+                add("본문 목록 줄 배치", f"lineseg 캐시가 없음 :: {text[:34]!r}")
+            for line_index, (_, horzpos, horzsize) in enumerate(line_segs):
+                expected_pos = H.BODY_LIST_BULLET_POSITION if line_index == 0 else expected_left
+                expected_size = text_width - expected_pos
+                if horzpos != expected_pos or horzsize != expected_size:
+                    add(
+                        "본문 목록 줄 배치",
+                        f"{line_index + 1}줄 horzpos·horzsize가 {horzpos}·{horzsize} "
+                        f"(규칙 {expected_pos}·{expected_size}) :: {text[:34]!r}",
+                    )
+            top_level.append({"kind": "list", "level": None, "pid": pid, "attrs": attrs, "text": text})
+            continue
+
+        if H.re.fullmatch(r"#{10,}", stripped):
+            add("검토 마커", "파란색 검토용 # 마커 문단이 생성 본문에 남음")
+        top_level.append({"kind": "body", "level": None, "pid": pid, "attrs": attrs, "text": text})
+
+    # 본문·목록·표 뒤의 수준 2~3 제목만 공통 윗간격을 사용한다. 연속 제목과
+    # 페이지 첫 제목에는 간격을 만들지 않고 수준 1의 새 쪽 동작을 유지한다.
+    boundary_plan = L.layout_plan(section, header) if body_start else []
+    planned_prev = {L.attr(item['xml'], 'id'): item['prev'] for item in boundary_plan}
+    for index, paragraph in enumerate(top_level):
+        if paragraph["kind"] != "heading" or not paragraph["pid"]:
+            continue
+        props = para_prs.get(paragraph["pid"], {})
+        level = paragraph["level"]
+        previous_kind = top_level[index - 1]["kind"] if index else None
+        expected_prev = (
+            H.HEADING_TOP_SPACING
+            if level in {2, 3} and previous_kind in {"body", "list", "table"}
+            else 0
+        )
+        # A preceding floating table owns the 12pt in its bottom outside margin.
+        paragraph_id = L.attr('<hp:p ' + paragraph['attrs'] + '>', 'id')
+        expected_prev = planned_prev.get(paragraph_id, expected_prev)
+        if props.get("prev") != expected_prev:
+            add(
+                "제목 위 간격",
+                f"수준 {level} 제목의 윗간격이 {props.get('prev')} (규칙 {expected_prev}) "
+                f":: {paragraph['text'][:34]!r}",
+            )
+        if level == 1 and 'pageBreak="1"' not in paragraph["attrs"]:
+            add("제목 새 쪽", f"수준 1 제목에 pageBreak=1이 없음 :: {paragraph['text'][:34]!r}")
+
+    if body_start:
+        for rule, detail in L.check_layout(section, header):
+            add(rule, detail)
+
     # 4. 글자 크기 - 본문 구간
     used_heights = {}
     for offset, _, body in H.paragraphs(section):
@@ -183,39 +379,65 @@ def check(path: Path) -> list:
         if len(segs) > 1 and len({v for v, _ in segs}) == 1:
             add("글자 겹침", f"줄 {len(segs)}개가 모두 같은 세로 위치에 놓임 :: {text[:34]}")
             continue
-        capacity = int(segs[0][1]) * len(segs)
+        capacity = sum(int(horzsize) for _, horzsize in segs)
         if capacity and total / capacity > OVERLAP_TOLERANCE:
             add(
                 "글자 겹침",
                 f"글자 폭이 배치된 줄 용량의 {total / capacity:.1f}배 :: {text[:34]}",
             )
 
-    # 5. 표 머리행 - 음영 / 세로 중간 / 가로 가운데, 6. 열 너비
+    # 5. 표 - 1행 음영, 1행·1열 가로/세로 중앙, 나머지 셀 가로 왼쪽
+    # 6. 열 너비
     for tno, tbl in enumerate(H.tables(section), start=1):
         offset = spans[tno - 1][0]
         if offset < body_start:
             continue
-        if H.is_label_column_table(tbl, shaded_ids):
-            continue  # 라벨열 표는 머리행이 없다
-
-        head_cells = sorted((c for c in H.cells(tbl) if c.row == 0), key=lambda c: c.col)
+        table_cells = H.cells(tbl)
+        label_col = H.is_label_column_table(tbl, shaded_ids)
+        head_cells = sorted((c for c in table_cells if c.row == 0), key=lambda c: c.col)
         if not head_cells:
             continue
-        if any(c.fill not in fill_ids for c in head_cells):
-            add("표 머리행 색", f"1행 배경이 {H.HEADER_FILL} 이 아님", f"표 {tno}")
-        elif any(c.fill in front_fills for c in head_cells):
-            add(
-                "표 머리행 색",
-                f"표지~목차와 borderFill 을 공유함. 본문 색을 바꾸면 양식까지 바뀜",
-                f"표 {tno}",
-            )
-        if any(c.vert_align != "CENTER" for c in head_cells):
-            add("표 머리행 맞춤", "1행이 세로 중간이 아님", f"표 {tno}")
-        aligns = {para_prs.get(p, {}).get("align") for c in head_cells for p in c.para_ids}
-        if aligns - {"CENTER"}:
-            add("표 머리행 맞춤", f"1행이 가로 가운데가 아님 ({', '.join(sorted(str(a) for a in aligns))})", f"표 {tno}")
+        if not label_col:
+            if any(c.fill not in fill_ids for c in head_cells):
+                add("표 머리행 색", f"1행 배경이 {H.HEADER_FILL} 이 아님", f"표 {tno}")
+            elif any(c.fill in front_fills for c in head_cells):
+                add(
+                    "표 머리행 색",
+                    "표지~목차와 borderFill 을 공유함. 본문 색을 바꾸면 양식까지 바뀜",
+                    f"표 {tno}",
+                )
 
-        for c in H.cells(tbl):
+        axis_cells = [cell for cell in table_cells if cell.row == 0 or cell.col == 0]
+        for cell in axis_cells:
+            if cell.vert_align != H.TABLE_AXIS_VERTICAL_ALIGN:
+                add(
+                    "표 축 셀 맞춤",
+                    f"1행·1열 셀이 세로 중앙이 아님 ({cell.vert_align})",
+                    f"표 {tno} r{cell.row}c{cell.col}",
+                )
+            aligns = [para_prs.get(pid, {}).get("align") for pid in cell.para_ids]
+            if not aligns or any(
+                align != H.TABLE_AXIS_HORIZONTAL_ALIGN for align in aligns
+            ):
+                add(
+                    "표 축 셀 맞춤",
+                    f"1행·1열 셀이 가로 가운데가 아님 ({aligns})",
+                    f"표 {tno} r{cell.row}c{cell.col}",
+                )
+
+        body_cells = [cell for cell in table_cells if cell.row > 0 and cell.col > 0]
+        for cell in body_cells:
+            aligns = [para_prs.get(pid, {}).get("align") for pid in cell.para_ids]
+            if not aligns or any(
+                align != H.TABLE_BODY_HORIZONTAL_ALIGN for align in aligns
+            ):
+                add(
+                    "표 내용 셀 맞춤",
+                    f"1행·1열 외 셀이 가로 왼쪽이 아님 ({aligns})",
+                    f"표 {tno} r{cell.row}c{cell.col}",
+                )
+
+        for c in table_cells:
             if c.colspan != 1:
                 continue
             for cid, text in c.runs():

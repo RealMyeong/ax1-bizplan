@@ -28,6 +28,10 @@ __pycache__/
 
 # 매니페스트 SHA-256으로 검증되는 익명화된 AX1 경량 생성 템플릿만 예외
 !skills/bizplan-hwpx/assets/templates/ax1-deliverable-cover.hwpx
+!skills/ax1-budget/assets/templates/ax1-budget-ledger.xlsx
+
+# 사용자 승인 비식별 합성 활용 예시 한 개만 포함
+!examples/hwpx/DXS-AX-TST-표흐름_합성검증-20260907-v0.1.hwpx
 
 # Operating system files
 .DS_Store

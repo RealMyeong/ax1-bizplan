@@ -5,6 +5,11 @@
   "sha256": "a292a53b64c3579cf4bcb1126378106f733013ae4a0598216bfeb4b7022f1be1",
   "sections": 1,
   "source": "PR #1 contributor-provided template, sanitized for AX1 team distribution",
+  "purpose": "Default template for AX1 general HWPX deliverables; not a replacement for official business-plan forms",
+  "approvedBy": "AX1_JM",
+  "approvedOn": "2026-09-02",
+  "distribution": "AX1 Skill Pack full and individual-skill ZIPs",
+  "sanitized": true,
   "containsTeamLogo": true,
   "placeholders": [
     "[발주기관]",

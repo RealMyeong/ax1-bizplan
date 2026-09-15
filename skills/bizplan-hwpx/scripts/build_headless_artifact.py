@@ -1,15 +1,16 @@
 """승인된 AX1 표지 양식에 확정 본문을 채워 HWPX를 만든다.
 
-    python build_headless_artifact.py --content <본문.md> -o <출력.hwpx> [표지 정보]
+    python build_headless_artifact.py --content <본문.md> -o <DXS-사업코드-문서유형-파일제목-YYYYMMDD-v0.1.hwpx> [표지 정보]
 
 양식의 표지~목차 제목은 손대지 않고 그 뒤에 목차 항목과 본문을 이어붙인 뒤,
 서식 규칙을 적용한다. 마크다운 앞부분의 표지·문서정보·개정이력·목차는 양식이
 이미 갖고 있으므로 건너뛴다.
 
 지원하는 마크다운
-    #/##/###   장·절·항 제목      | ... |   표 (첫 줄이 머리행)
+    #/##/###   장·절·항 제목   | ... |   표 (첫 줄이 머리행)
+    #### 이상  본문 목록으로 전환
     빈 줄 구분  본문 문단          -, *     리스트
-    1. 2. 3.   번호 목록 (번호를 글자로 남기고 각각 별개 문단)
+    1. 2. 3.   번호 목록 (번호 보존 + 실제 줄바꿈에 맞는 hanging indent)
 표준 라이브러리만 사용하며 한컴오피스·COM 창을 실행하지 않는다. 임의 템플릿은
 받지 않고 스킬에 포함된 SHA-256 승인 템플릿만 사용한다.
 """
@@ -17,7 +18,6 @@
 from __future__ import annotations
 
 import argparse
-import os
 import re
 import sys
 import tempfile
@@ -27,20 +27,24 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.dont_write_bytecode = True
 
 import headless_hwpx as H  # noqa: E402
+import artifact_metadata as M  # noqa: E402
 import format_headless_artifact as A  # noqa: E402
 import check_headless_artifact as C  # noqa: E402
+import layout_headless_artifact as L  # noqa: E402
 
 # 제목 계층 (references/08-headless-format-rules.md 의 글자 크기 계층과 같아야 함)
 HEADING_HEIGHT = {1: 1500, 2: 1200, 3: 1050}
+HEADING_STYLE = {1: "개요 1", 2: "개요 2", 3: "개요 3"}
+OUTLINE_PREFIX_SPACES = H.HEADING_PREFIX_SPACES
 TABLE_OUT_MARGIN = 283
 CELL_MARGIN = (510, 510, 141, 141)  # left right top bottom
 MIN_COL_WIDTH = 3000
 
 # 표 기본 속성 (한/글 [표 속성] 대화상자와 대응)
-#   글자처럼 취급   -> treat_as_char   (해제)
-#   쪽 경계에서     -> page_break      (셀 단위로 나눔 = CELL)
+#   글자처럼 취급   -> 기본 설정. 최종 열 폭/행 높이 계산 뒤 한 쪽 초과 표만 해제.
+#   쪽 경계에서     -> page_break      (긴 표에 적용되는 셀 단위 나눔 = CELL)
 #   제목 줄 자동 반복 -> repeat_header   (끔). 셀의 header 속성도 함께 0
-TABLE_TREAT_AS_CHAR = 0
+TABLE_TREAT_AS_CHAR = 1
 TABLE_PAGE_BREAK = "CELL"
 TABLE_REPEAT_HEADER = 0
 
@@ -97,10 +101,20 @@ def parse_markdown(text: str) -> list:
             i += 1
             continue
 
-        m = re.match(r"^(#{1,6})\s+(.*)$", stripped)
+        m = re.match(r"^(#{1,})\s+(.*)$", stripped)
         if m:
             flush()
-            blocks.append(("h", min(len(m.group(1)), 3), strip_inline(m.group(2))))
+            level = len(m.group(1))
+            heading_text = strip_inline(m.group(2))
+            if level <= H.MAX_HEADING_LEVEL:
+                blocks.append(("h", level, heading_text))
+            else:
+                heading_text = re.sub(
+                    rf"^\d+(?:\.\d+){{{H.MAX_HEADING_LEVEL},}}\.?\s+",
+                    "",
+                    heading_text,
+                )
+                blocks.append(("li", 1, heading_text))
             i += 1
             continue
 
@@ -124,12 +138,11 @@ def parse_markdown(text: str) -> list:
             i += 1
             continue
 
-        # 번호 목록은 번호를 글자로 남기고 각각 별개 문단으로 둔다.
-        # 한 문단으로 뭉치면 아주 긴 문단이 되어 줄바꿈이 어긋난다.
-        m = re.match(r"^(\s*)\d+\.\s+(.*)$", line)
+        # 번호를 보존하되 일반 본문이 아닌 실제 hanging-indent 목록으로 둔다.
+        m = re.match(r"^\s*(\d+\.)\s+(.*)$", line)
         if m:
             flush()
-            blocks.append(("p", strip_inline(line.strip())))
+            blocks.append(("ol", m.group(1) + " ", strip_inline(m.group(2))))
             i += 1
             continue
 
@@ -203,9 +216,42 @@ class StylePool:
         self.new_chars.append(block)
         return new_id
 
-    def para_indent(self, left: int) -> str:
+    def para_format(
+        self,
+        left: int = 0,
+        intent: int = 0,
+        prev: int = 0,
+        align: str | None = None,
+    ) -> str:
+        """Return a paragraph style with canonical HwpUnitChar margin values.
+
+        The approved template stores the fallback margin branch at twice the
+        HwpUnitChar values, so both branches must be changed together.
+        """
         block = self.paras[self.base_para]
-        block = re.sub(r'(<hc:left value=")-?\d+(")', lambda m: m.group(1) + str(left) + m.group(2), block)
+        margin_index = 0
+
+        def replace_margin(match):
+            nonlocal margin_index
+            scale = 1 if margin_index == 0 else 2
+            margin_index += 1
+            margin = match.group(0)
+            for name, value in (("left", left), ("intent", intent), ("prev", prev)):
+                margin = re.sub(
+                    rf'(<hc:{name} value=")-?\d+(")',
+                    lambda m, v=value * scale: m.group(1) + str(v) + m.group(2),
+                    margin,
+                    count=1,
+                )
+            return margin
+
+        block = re.sub(r'<hh:margin>.*?</hh:margin>', replace_margin, block, flags=re.S)
+        if align is not None:
+            block = re.sub(
+                r'(<hh:align horizontal=")\w+(")',
+                lambda match: match.group(1) + align + match.group(2),
+                block,
+            )
         want = self._strip(block, "paraPr")
         for pid, existing in self.paras.items():
             if self._strip(existing, "paraPr") == want:
@@ -215,6 +261,9 @@ class StylePool:
         self.paras[new_id] = block
         self.new_paras.append(block)
         return new_id
+
+    def para_indent(self, left: int) -> str:
+        return self.para_format(left=left)
 
     def finish(self) -> str:
         header = self.header
@@ -235,62 +284,92 @@ class StylePool:
 
 class Emitter:
     def __init__(self, pool: StylePool, text_width: int, plain_fill: str,
-                 regular: H.Font, boldfont: H.Font):
+                 regular: H.Font, boldfont: H.Font, styles: dict[str, str]):
         self.pool = pool
         self.text_width = text_width
         self.plain_fill = plain_fill
         self.regular = regular
         self.boldfont = boldfont
+        self.styles = styles
         self.next_id = 1200000000
 
     def _id(self) -> int:
         self.next_id += 1
         return self.next_id
 
-    def _linesegs(self, text: str, height: int, bold: bool, horzsize: int) -> str:
+    def _linesegs(
+        self,
+        text: str,
+        height: int,
+        bold: bool,
+        horzsize: int,
+        first_horzpos: int = 0,
+        following_horzpos: int | None = None,
+    ) -> str:
         """실제로 접히는 줄 수만큼 lineseg 를 만든다.
 
         한 개만 넣으면 여러 줄이 같은 자리에 겹쳐 그려진다.
         """
         spacing = round(height * (H.BODY_LINE_SPACING - 100) / 100)
         line_h = height + spacing
-        starts = H.wrap_lines(text, height, bold, self.regular, self.boldfont, horzsize)
+        following_horzpos = first_horzpos if following_horzpos is None else following_horzpos
+        starts = H.wrap_lines(
+            text,
+            height,
+            bold,
+            self.regular,
+            self.boldfont,
+            horzsize - first_horzpos,
+            following_avail=horzsize - following_horzpos,
+        )
         segs = "".join(
             f'<hp:lineseg textpos="{pos}" vertpos="{i * line_h}" vertsize="{height}"'
             f' textheight="{height}" baseline="{round(height * 0.85)}" spacing="{spacing}"'
-            f' horzpos="0" horzsize="{horzsize}" flags="393216"/>'
+            f' horzpos="{first_horzpos if i == 0 else following_horzpos}"'
+            f' horzsize="{horzsize - (first_horzpos if i == 0 else following_horzpos)}" flags="393216"/>'
             for i, pos in enumerate(starts)
         )
         return f"<hp:linesegarray>{segs}</hp:linesegarray>"
 
     def para(self, text: str, para_id: str, char_id: str, height: int, horzsize=None,
-             page_break=False, bold=False) -> str:
+             page_break=False, bold=False, style="0", first_horzpos=0,
+             following_horzpos=None) -> str:
         run = f"<hp:run charPrIDRef=\"{char_id}\">{'<hp:t>' + esc(text) + '</hp:t>' if text else ''}</hp:run>"
         width = horzsize if horzsize is not None else self.text_width
         return (
-            f'<hp:p id="{self._id()}" paraPrIDRef="{para_id}" styleIDRef="0"'
+            f'<hp:p id="{self._id()}" paraPrIDRef="{para_id}" styleIDRef="{style}"'
             f' pageBreak="{1 if page_break else 0}" columnBreak="0" merged="0">'
-            f"{run}{self._linesegs(text, height, bold, width)}</hp:p>"
+            f"{run}{self._linesegs(text, height, bold, width, first_horzpos, following_horzpos)}</hp:p>"
         )
 
-    def heading(self, level: int, text: str) -> str:
+    def heading(self, level: int, text: str, add_top_spacing: bool = False) -> str:
         height = HEADING_HEIGHT[level]
+        text = " " * OUTLINE_PREFIX_SPACES[level] + text.lstrip()
+        prev = H.HEADING_TOP_SPACING if level in {2, 3} and add_top_spacing else 0
         return self.para(
-            text, self.pool.base_para, self.pool.char(height, True), height,
+            text, self.pool.para_format(prev=prev), self.pool.char(height, True), height,
             page_break=(level == 1), bold=True,
+            style=self.styles[HEADING_STYLE[level]],
         )
 
     def body(self, text: str) -> str:
         return self.para(text, self.pool.base_para, self.pool.char(H.BODY_TEXT_HEIGHT, False), H.BODY_TEXT_HEIGHT)
 
-    def item(self, level: int, text: str) -> str:
-        para_id = self.pool.para_indent(min(level, 3) * 1000)
+    def item(self, level: int, text: str, prefix: str = "• ") -> str:
+        del level  # 경량 기본 목록은 한 단계이며 문단 hanging indent로 정렬한다.
+        left, intent = L.list_margins(prefix, self.regular, self.boldfont)
+        text = prefix + text.lstrip()
         return self.para(
-            "· " + text,
-            para_id,
+            text,
+            self.pool.para_format(
+                left=left,
+                intent=intent,
+            ),
             self.pool.char(H.BODY_TEXT_HEIGHT, False),
             H.BODY_TEXT_HEIGHT,
-            horzsize=self.text_width - min(level, 3) * 1000,
+            horzsize=self.text_width,
+            first_horzpos=H.BODY_LIST_BULLET_POSITION,
+            following_horzpos=left,
         )
 
     def table(self, rows: list, regular: H.Font, boldfont: H.Font) -> str:
@@ -327,9 +406,14 @@ class Emitter:
             total_h += row_h
             tcs = []
             for c_i, cell in enumerate(row):
+                is_axis = is_head or c_i == 0
                 inner = self.para(
                     cell,
-                    self.pool.center_para if is_head else self.pool.base_para,
+                    (
+                        self.pool.center_para
+                        if is_axis
+                        else self.pool.para_format(align=H.TABLE_BODY_HORIZONTAL_ALIGN)
+                    ),
                     head_char if is_head else body_char,
                     H.BODY_TEXT_HEIGHT,
                     horzsize=widths[c_i] - pad - 2,
@@ -338,7 +422,8 @@ class Emitter:
                 tcs.append(
                     f'<hp:tc name="" header="{TABLE_REPEAT_HEADER if is_head else 0}" hasMargin="0" protect="0"'
                     f' editable="0" dirty="0" borderFillIDRef="{self.plain_fill}">'
-                    f'<hp:subList id="" textDirection="HORIZONTAL" lineWrap="BREAK" vertAlign="CENTER"'
+                    f'<hp:subList id="" textDirection="HORIZONTAL" lineWrap="BREAK"'
+                    f' vertAlign="{H.TABLE_AXIS_VERTICAL_ALIGN}"'
                     f' linkListIDRef="0" linkListNextIDRef="0" textWidth="0" textHeight="0"'
                     f' hasTextRef="0" hasNumRef="0">{inner}</hp:subList>'
                     f'<hp:cellAddr colAddr="{c_i}" rowAddr="{r_i}"/>'
@@ -460,6 +545,11 @@ def fill_cover(section: str, header: str, values: dict[str, str], log: list) -> 
     }
     if any(not str(value).strip() for value in placeholders.values()):
         raise H.HeadlessHwpxError("표지 정보에 빈 값이 있음")
+    # Keep the full approved title. Suppress only the redundant type slot,
+    # never remove matching words from arbitrary body headings or the TOC.
+    if re.sub(r'\s+', '', values['title']).endswith(re.sub(r'\s+', '', values['document_type'])):
+        placeholders['[문서 유형]'] = ''
+        log.append('표지 제목에 포함된 문서 유형의 별도 반복 표시 생략')
 
     plan = {}
     for off, _, body in H.paragraphs(section):
@@ -502,7 +592,103 @@ def fill_cover(section: str, header: str, values: dict[str, str], log: list) -> 
     return section
 
 
-def build(template: Path, content: Path, out: Path, cover: dict[str, str], make_toc=True) -> list:
+def record_initial_revision(
+    section: str,
+    header: str,
+    *,
+    version: str,
+    revision_date: str,
+    note: str,
+    author: str,
+    log: list,
+) -> str:
+    """승인 AX1 빈 개정표의 데이터 첫 행에 최초 기록만 추가한다."""
+    body_start = H.body_start_offset(section)
+    if not H.ax1_front_matter_signature(section, body_start):
+        raise H.HeadlessHwpxError("승인 AX1 템플릿의 표지 구조를 확인할 수 없음")
+    spans = H.revision_table_spans(section, body_start)
+    if len(spans) != 1:
+        raise H.HeadlessHwpxError(f"개정 이력표를 정확히 하나로 식별할 수 없음: {len(spans)}개")
+    start, end = spans[0]
+    table = section[start:end]
+    analysis = H.analyze_revision_table(table, require_record=False, require_empty_row=True)
+    if analysis.issues:
+        raise H.HeadlessHwpxError("개정 이력표 사전검사 실패: " + "; ".join(analysis.issues))
+    if analysis.records:
+        raise H.HeadlessHwpxError("새 일반 산출물은 빈 개정 이력표에서만 생성할 수 있음")
+    if not analysis.empty_rows or analysis.empty_rows[0] != 1:
+        raise H.HeadlessHwpxError("개정 이력의 데이터 첫 행이 비어 있지 않음")
+
+    char_prs = H.parse_char_prs(header)
+    regular, boldfont = H.Font(H.MALGUN), H.Font(H.MALGUN_BOLD)
+
+    def relayout(paragraph: str) -> str:
+        return relayout_paragraph(paragraph, char_prs, regular, boldfont)
+
+    values = (revision_date, version, note, author)
+    for column, value in enumerate(values):
+        if value:
+            table = H.set_revision_cell_text(
+                table,
+                1,
+                column,
+                value,
+                require_empty=True,
+                paragraph_transform=relayout,
+            )
+    verified = H.analyze_revision_table(table, require_record=True, require_empty_row=True)
+    if verified.issues or len(verified.records) != 1:
+        details = verified.issues or [f"개정 기록 수가 1개가 아님: {len(verified.records)}"]
+        raise H.HeadlessHwpxError("개정 이력표 기록 후 검사 실패: " + "; ".join(details))
+    record = verified.records[0]
+    if (record.date, record.version, record.note, record.author, record.confirmer) != (
+        revision_date,
+        version,
+        note,
+        author,
+        "",
+    ):
+        raise H.HeadlessHwpxError("개정 이력표 기록값 readback이 요청값과 일치하지 않음")
+    log.append(
+        f"개정 이력 첫 행 기록: {revision_date} / {version} / {note!r}"
+        + (f" / 작성자 {author!r}" if author else " / 작성자 미입력")
+        + " / 확인자 미입력"
+    )
+    return section[:start] + table + section[end:]
+
+
+def build(
+    template: Path,
+    content: Path,
+    out: Path,
+    cover: dict[str, str],
+    make_toc=True,
+    artifact_version="v0.1",
+    revision_note="최초 작성",
+    revision_author="",
+    revision_date=None,
+    previous_artifact=None,
+    previous_sha256=None,
+    document_info=None,
+) -> list:
+    artifact_version = H.validate_artifact_version(artifact_version)
+    revision_date = H.normalize_revision_date(revision_date)
+    if not isinstance(revision_note, str) or not revision_note.strip():
+        raise H.HeadlessHwpxError("개정내역은 비어 있을 수 없음")
+    if not isinstance(revision_author, str):
+        raise H.HeadlessHwpxError("개정 작성자는 문자열이어야 함")
+    out = H.require_new_artifact_output(Path(out), artifact_version, revision_date)
+    prior_records, people = M.prepare(previous_artifact, previous_sha256, out,
+                                     artifact_version, revision_date, document_info)
+    person_author = people.get('작성자', {}).get('성명', '')
+    if revision_author and person_author and revision_author != person_author:
+        raise H.HeadlessHwpxError('문서 정보 작성자와 개정 작성자가 충돌함')
+    revision_author = revision_author or person_author
+    template = Path(template)
+    approved = default_template()
+    if template.resolve() != approved.resolve():
+        raise H.HeadlessHwpxError("경량 생성은 스킬에 포함된 승인 AX1 템플릿만 사용할 수 있음")
+
     log = []
     entries = H.read_hwpx(template)
     header = H.get_text(entries, H.HEADER)
@@ -515,11 +701,22 @@ def build(template: Path, content: Path, out: Path, cover: dict[str, str], make_
     for b in blocks:
         kinds[b[0]] = kinds.get(b[0], 0) + 1
     log.append(f"본문 블록 {len(blocks)}개 (제목 {kinds.get('h', 0)}, 문단 {kinds.get('p', 0)}, "
-               f"리스트 {kinds.get('li', 0)}, 표 {kinds.get('table', 0)})")
+               f"리스트 {kinds.get('li', 0) + kinds.get('ol', 0)}, 표 {kinds.get('table', 0)})")
 
     pool = StylePool(header)
     regular, boldfont = H.Font(H.MALGUN), H.Font(H.MALGUN_BOLD)
-    emitter = Emitter(pool, text_width_of(section), plain_border_fill(header), regular, boldfont)
+    styles = H.style_ids_by_name(header)
+    missing_styles = [name for name in HEADING_STYLE.values() if name not in styles]
+    if missing_styles:
+        raise H.HeadlessHwpxError("승인 템플릿 제목 스타일 누락: " + ", ".join(missing_styles))
+    emitter = Emitter(
+        pool,
+        text_width_of(section),
+        plain_border_fill(header),
+        regular,
+        boldfont,
+        styles,
+    )
 
     parts = []
 
@@ -530,17 +727,34 @@ def build(template: Path, content: Path, out: Path, cover: dict[str, str], make_
             parts.append(emitter.body(name))
         log.append(f"목차 항목 {len(chapters)}개 생성")
 
+    previous_kind = None
     for block in blocks:
         if block[0] == "h":
-            parts.append(emitter.heading(block[1], block[2]))
+            add_top_spacing = block[1] in {2, 3} and previous_kind in {"p", "li", "ol", "table"}
+            parts.append(emitter.heading(block[1], block[2], add_top_spacing))
         elif block[0] == "p":
             parts.append(emitter.body(block[1]))
         elif block[0] == "li":
             parts.append(emitter.item(block[1], block[2]))
+        elif block[0] == "ol":
+            parts.append(emitter.item(1, block[2], prefix=block[1]))
         elif block[0] == "table":
             parts.append(emitter.table(block[1], regular, boldfont))
+        previous_kind = block[0]
+    log.append(f"본문·목록·표 뒤 수준 2~3 제목 윗간격 {H.HEADING_TOP_SPACING} HWPUNIT 적용")
+    log.append(
+        "본문 목록 hanging indent 적용: "
+        f"왼쪽 {H.BODY_LIST_LEFT_INDENT}, 첫 줄 {H.BODY_LIST_FIRST_LINE_INDENT}, "
+        f"글머리표 위치 {H.BODY_LIST_BULLET_POSITION} HWPUNIT"
+    )
 
     section = fill_cover(section, header, cover, log)
+    def metadata_layout(paragraph):
+        return relayout_paragraph(paragraph, H.parse_char_prs(header), regular, boldfont)
+    section = M.fill_people(section, people, metadata_layout)
+    section = M.fill_history(section, prior_records, artifact_version, revision_date,
+                             revision_note, revision_author, metadata_layout)
+    log.append(f'기존 이력 {len(prior_records)}행 보존 + 새 개정 1행; 문서 정보 {len(people)}개 역할 반영')
     try:
         preview = H.get_text(entries, H.PREVIEW)
         for placeholder, key in (
@@ -551,7 +765,10 @@ def build(template: Path, content: Path, out: Path, cover: dict[str, str], make_
             ("[산출물 제목]", "title"),
             ("[문서 유형]", "document_type"),
         ):
-            preview = preview.replace(placeholder, cover[key])
+            value = cover[key]
+            if key == 'document_type' and re.sub(r'\s+', '', cover['title']).endswith(re.sub(r'\s+', '', value)):
+                value = ''
+            preview = preview.replace(placeholder, value)
         H.set_text(entries, H.PREVIEW, preview)
     except KeyError:
         pass
@@ -559,9 +776,9 @@ def build(template: Path, content: Path, out: Path, cover: dict[str, str], make_
         raise SystemExit("section0.xml 에서 </hs:sec> 를 찾지 못했다")
     section = section.replace("</hs:sec>", "".join(parts) + "</hs:sec>", 1)
 
-    source_texts = list(cover.values())
+    source_texts = list(cover.values()) + [revision_note, revision_author]
     for block in blocks:
-        if block[0] in {"h", "li"}:
+        if block[0] in {"h", "li", "ol"}:
             source_texts.append(block[2])
         elif block[0] == "p":
             source_texts.append(block[1])
@@ -582,13 +799,16 @@ def build(template: Path, content: Path, out: Path, cover: dict[str, str], make_
     H.set_text(entries, H.SECTION, section)
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    handle, raw_name = tempfile.mkstemp(prefix=f".{out.stem}-raw-", suffix=".hwpx", dir=out.parent)
-    os.close(handle)
-    raw_path = Path(raw_name)
-    handle, fmt_name = tempfile.mkstemp(prefix=f".{out.stem}-fmt-", suffix=".hwpx", dir=out.parent)
-    os.close(handle)
-    fmt_path = Path(fmt_name)
+    temp_manager = tempfile.TemporaryDirectory(
+        prefix=".ax1-headless-build-",
+        dir=out.parent,
+        ignore_cleanup_errors=True,
+    )
+    temp_root = Path(temp_manager.name)
+    build_error = None
     try:
+        raw_path = temp_root / f"raw_{artifact_version}.hwpx"
+        fmt_path = temp_root / out.name
         H.write_hwpx(entries, raw_path)
         log.append("승인 양식 뒤에 본문 삽입 완료")
         log.append("--- 경량 서식 적용 ---")
@@ -597,10 +817,25 @@ def build(template: Path, content: Path, out: Path, cover: dict[str, str], make_
         if issues:
             summary = "; ".join(f"{item['rule']}: {item['detail']}" for item in issues[:8])
             raise H.HeadlessHwpxError("경량 생성 후 자동검사 실패: " + summary)
-        os.replace(fmt_path, out)
+        if previous_artifact is not None and H.sha256_file(Path(previous_artifact)) != previous_sha256.lower():
+            raise H.HeadlessHwpxError('게시 직전 기준본 SHA-256 변경; 재검토 필요')
+        H.publish_new_file(fmt_path, out)
+    except Exception as exc:
+        build_error = exc
     finally:
-        raw_path.unlink(missing_ok=True)
-        fmt_path.unlink(missing_ok=True)
+        temp_manager.cleanup()
+    cleanup_pending = temp_root.exists()
+    if build_error is not None:
+        if cleanup_pending:
+            raise H.HeadlessHwpxError(
+                f"{build_error}; 민감정보가 포함될 수 있는 임시 폴더를 삭제하지 못함: {temp_root}"
+            ) from build_error
+        raise build_error
+    if cleanup_pending:
+        log.append(
+            "[경고] 출력은 생성했지만 민감정보가 포함될 수 있는 임시 폴더를 "
+            f"삭제하지 못함. 수동 삭제 필요: {temp_root}"
+        )
     log.append(f"구조·서식 자동검사 통과 후 저장 -> {out}")
     return log
 
@@ -616,6 +851,13 @@ def main() -> int:
     ap.add_argument("--title", required=True, help="산출물 제목")
     ap.add_argument("--document-type", required=True, help="문서 유형")
     ap.add_argument("--no-toc", action="store_true", help="목차 항목을 만들지 않음")
+    ap.add_argument("--artifact-version", default="v0.1", help="산출물 버전 (기본: v0.1)")
+    ap.add_argument("--revision-note", default="최초 작성", help="개정 이력의 개정내역 (기본: 최초 작성)")
+    ap.add_argument("--revision-author", default="", help="개정 이력의 작성자; 확인자는 자동 입력하지 않음")
+    ap.add_argument("--revision-date", default=None, help="테스트·재현용 개정일자 YYYY-MM-DD; 기본은 한국 날짜")
+    ap.add_argument('--previous-artifact', type=Path, help='같은 산출물군의 기존 이력 기준본 (읽기 전용)')
+    ap.add_argument('--previous-sha256', help='확인한 기준본의 SHA-256')
+    ap.add_argument('--document-info', type=Path, help='확인된 문서 정보 JSON: 역할별 소속·성명·날짜')
     args = ap.parse_args()
 
     try:
@@ -637,10 +879,22 @@ def main() -> int:
         "document_type": args.document_type,
     }
     try:
-        for line in build(template, args.content, args.out, cover, not args.no_toc):
+        for line in build(
+            template,
+            args.content,
+            args.out,
+            cover,
+            not args.no_toc,
+            args.artifact_version,
+            args.revision_note,
+            args.revision_author,
+            args.revision_date,
+            previous_artifact=args.previous_artifact,
+            previous_sha256=args.previous_sha256,
+            document_info=args.document_info,
+        ):
             print(line)
     except (H.HeadlessHwpxError, OSError, ValueError) as exc:
-        args.out.unlink(missing_ok=True)
         print(f"[중단] {exc}")
         return 2
     print("\ncheck_headless_artifact.py 로 검사하고 최종본은 한컴에서 직접 확인할 것")

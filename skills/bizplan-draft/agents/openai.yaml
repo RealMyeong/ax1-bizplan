@@ -1,6 +1,6 @@
 interface:
   display_name: "R&D 사업계획서 초안"
   short_description: "대화로 사업을 설계한 뒤 양식에 밀도 있게 배분·작성"
-  default_prompt: "$bizplan-draft를 사용해 RFP와 양식을 분석하고, 첫 응답에서는 문서를 만들지 말고 질문·답변으로 사업 아이디어와 구현 방식을 구체화한 뒤 구현 브리프를 확인받아 양식 배분표와 밀도 있는 DOCX 초안을 작성해줘."
+  default_prompt: "$bizplan-draft를 사용해 사업 아이디어와 구현 방식을 구체화하고, 확인된 구현 브리프를 RFP 양식에 배분해 초안을 작성해줘."
 policy:
   allow_implicit_invocation: true

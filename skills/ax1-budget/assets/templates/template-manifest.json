@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "ax1.xlsx-template/v1",
+  "file": "ax1-budget-ledger.xlsx",
+  "templateVersion": "1.1",
+  "sha256": "2cf36a27dfc8880b7ed9127860ef2ae9e18fc8f6126731260ee43c5da3f20f8c",
+  "sourceSha256": "c5dc47320c4aa81e7338a97619daef43cc77a65564de74ec3a97343869c5fa19",
+  "source": "사용자가 제공한 사업비·구매비용 공통관리대장 양식 v1.1. 원본은 제한 작업공간에 보존하며 배포하지 않음.",
+  "approvedBy": "AX1 저장소 관리자 요청 및 진행 확인",
+  "approvedOn": "2026-09-07",
+  "distribution": "AX1 통합 ZIP 및 CI 내부 individual-skill ZIPs",
+  "sanitized": true,
+  "sanitization": [
+    "주문주체 코드와 연결된 드롭다운을 주관기관·참여기관 자리표시자로 교체",
+    "대시보드의 과거 관리번호와 양식 이력의 특정 프로젝트 표기를 공통화",
+    "실제 거래·예산 입력값, 개인 메타데이터, 외부 링크·매크로가 없는지 검사"
+  ],
+  "sheets": ["00_통합현황", "01_구매비용원장", "02_승인예산", "03_코드_안내"],
+  "formulaCounts": [82, 1350, 600, 0],
+  "tables": ["A6:AQ156", "A6:S66"],
+  "validation": {
+    "structure": "수식 2032개, 표 2개, 차트 1개, 시트·병합·셀서식·입력규칙 보존 비교",
+    "visual": "공통화 전후 대시보드·코드표 렌더 확인",
+    "nativeExcel": "실제 Excel 개방·계산·인쇄 시각 검증은 미실행",
+    "knownLimit": "기존 대시보드 비목별 표·차트는 5개 비목만 표시. 다른 비목 사용 시 별도 보완 검증 필요."
+  }
+}

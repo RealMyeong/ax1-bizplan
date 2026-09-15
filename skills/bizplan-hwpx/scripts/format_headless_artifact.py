@@ -2,7 +2,9 @@
 
 일반 문서를 임의로 고치는 공개 편집기가 아니다. 승인 템플릿에서 생성된 임시
 산출물에만 build_headless_artifact.py가 내부적으로 호출한다. 표지~목차 제목은
-건드리지 않고, 본문과 본문 표에만 160% 규칙을 적용한다.
+건드리지 않고, 본문과 본문 표에 160% 규칙과 표 축·내용 셀 맞춤 규칙을 적용한다.
+목록 hanging indent는 보존한다. 표의 최종 폭으로 셀 줄 수·행 높이를 다시 계산한
+뒤 표 배치·경계 12pt의 단일 적용·표 앵커 캐시를 동기화한다.
 """
 
 from __future__ import annotations
@@ -16,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.dont_write_bytecode = True
 
 import headless_hwpx as H  # noqa: E402
+import layout_headless_artifact as L  # noqa: E402
 
 
 class ParaPrPool:
@@ -55,7 +58,7 @@ class ParaPrPool:
     def _strip_id(block: str) -> str:
         return re.sub(r'^<hh:paraPr id="\d+"', '<hh:paraPr', block)
 
-    def _render(self, pid: str, spacing: int, align) -> str:
+    def _render(self, pid: str, spacing: int, align, prev=None, next_spacing=None) -> str:
         block = self.blocks[pid]
         block = re.sub(
             r'(<hh:lineSpacing type="PERCENT" value=")-?\d+(")',
@@ -64,19 +67,34 @@ class ParaPrPool:
         )
         if align:
             block = re.sub(r'(<hh:align horizontal=")\w+(")', lambda m: m.group(1) + align + m.group(2), block)
+        margin_index = 0
+
+        def margin_values(match):
+            nonlocal margin_index
+            scale = 1 if margin_index == 0 else 2
+            margin_index += 1
+            margin = match[0]
+            for name, value in (("prev", prev), ("next", next_spacing)):
+                if value is not None:
+                    margin = re.sub(rf'(<hc:{name} value=")-?\d+(")',
+                                    lambda m, v=value * scale: m[1] + str(v) + m[2], margin)
+            return margin
+
+        if prev is not None or next_spacing is not None:
+            block = re.sub(r'<hh:margin>.*?</hh:margin>', margin_values, block, flags=re.S)
         return block
 
-    def variant(self, pid: str, spacing: int, align=None) -> str:
+    def variant(self, pid: str, spacing: int, align=None, prev=None, next_spacing=None) -> str:
         """줄간격/정렬이 맞는 문단모양 id 를 돌려준다.
 
         내용이 똑같은 문단모양이 이미 있으면 그것을 재사용한다. 매번 복제하면
         같은 파일에 두 번 적용했을 때 쓰이지 않는 문단모양이 계속 쌓인다.
         """
-        key = (pid, spacing, align)
+        key = (pid, spacing, align, prev, next_spacing)
         if key in self.cache:
             return self.cache[key]
 
-        want = self._strip_id(self._render(pid, spacing, align))
+        want = self._strip_id(self._render(pid, spacing, align, prev, next_spacing))
         for other_id, block in self.blocks.items():
             if self._strip_id(block) == want:
                 self.cache[key] = other_id
@@ -84,7 +102,7 @@ class ParaPrPool:
 
         new_id = str(self.next_id)
         self.next_id += 1
-        block = re.sub(r'^<hh:paraPr id="\d+"', f'<hh:paraPr id="{new_id}"', self._render(pid, spacing, align))
+        block = re.sub(r'^<hh:paraPr id="\d+"', f'<hh:paraPr id="{new_id}"', self._render(pid, spacing, align, prev, next_spacing))
         self.blocks[new_id] = block
         self.new_blocks.append(block)
         self.cache[key] = new_id
@@ -204,7 +222,7 @@ def rebalance_columns(tbl: str, char_prs: dict, regular: H.Font, boldfont: H.Fon
 
 
 def fix_linesegs(xml: str, percent: int) -> str:
-    """줄 배치 캐시의 줄간격을 문단 줄간격에 맞춘다."""
+    """줄 배치 캐시의 세로 줄간격만 맞추고 가로 hanging indent는 보존한다."""
     factor = (percent - 100) / 100
 
     def fix(m):
@@ -272,7 +290,7 @@ def apply(src: Path, dst: Path) -> list:
         segment = re.sub(r'(<hp:p [^>]*?)paraPrIDRef="(\d+)"', replace_para, segment)
         return fix_linesegs(segment, H.BODY_LINE_SPACING)
 
-    # 표 - 머리행 서식 / 셀 줄간격 160% / 열 너비
+    # 표 - 머리행 음영 / 1행·1열 중앙 / 나머지 셀 왼쪽 / 160% / 열 너비
     pieces, last = [], 0
     widened = 0
     header_rows = 0
@@ -287,42 +305,54 @@ def apply(src: Path, dst: Path) -> list:
 
         label_col = H.is_label_column_table(tbl, fill_ids)
 
-        # 6-1. 머리행: 음영 + 세로 중간 + 가로 가운데 + 셀 줄간격
-        tr_a = tbl.find("<hp:tr>")
-        if tr_a < 0:
+        # 6-1. 1행은 음영, 1행·1열은 중앙, 나머지 셀은 왼쪽 정렬한다.
+        table_cells = H.cells(tbl)
+        if not table_cells:
             log.append("[경고] 행을 찾지 못한 표를 건너뜀")
             pieces.append(section[last:end])
             last = end
             continue
-        tr_b = tbl.find("</hp:tr>", tr_a) + len("</hp:tr>")
-        prefix = tbl[:tr_a]  # <hp:tbl ...> 와 sz/pos/margin. 반드시 보존한다
-        head_row = tbl[tr_a:tr_b]
-        rest = tbl[tr_b:]
 
-        if not label_col:
-            if fill_id:
-                head_row = re.sub(r'(<hp:tc [^>]*?)borderFillIDRef="\d+"', lambda m: m.group(1) + f'borderFillIDRef="{fill_id}"', head_row)
-            head_row = re.sub(r'(<hp:subList [^>]*?)vertAlign="\w+"', lambda m: m.group(1) + 'vertAlign="CENTER"', head_row)
-            head_row = re.sub(
-                r'(<hp:p [^>]*?)paraPrIDRef="(\d+)"',
-                lambda m: m.group(1) + f'paraPrIDRef="{pool.variant(m.group(2), H.CELL_LINE_SPACING, "CENTER")}"',
-                head_row,
+        cell_block_re = re.compile(r'<hp:tc (?P<attrs>[^>]*)>(?P<body>.*?)</hp:tc>', re.S)
+
+        def format_cell(match):
+            block = match.group(0)
+            address = re.search(r'<hp:cellAddr colAddr="(\d+)" rowAddr="(\d+)"/>', block)
+            if not address:
+                return block
+            col, row = int(address.group(1)), int(address.group(2))
+            is_axis = row == 0 or col == 0
+            align = (
+                H.TABLE_AXIS_HORIZONTAL_ALIGN
+                if is_axis
+                else H.TABLE_BODY_HORIZONTAL_ALIGN
             )
+            if row == 0 and not label_col and fill_id:
+                block = re.sub(
+                    r'(<hp:tc [^>]*?)borderFillIDRef="\d+"',
+                    lambda current: current.group(1) + f'borderFillIDRef="{fill_id}"',
+                    block,
+                    count=1,
+                )
+            if is_axis:
+                block = re.sub(
+                    r'(<hp:subList [^>]*?)vertAlign="\w+"',
+                    lambda current: current.group(1)
+                    + f'vertAlign="{H.TABLE_AXIS_VERTICAL_ALIGN}"',
+                    block,
+                    count=1,
+                )
+            block = re.sub(
+                r'(<hp:p [^>]*?)paraPrIDRef="(\d+)"',
+                lambda current: current.group(1)
+                + f'paraPrIDRef="{pool.variant(current.group(2), H.CELL_LINE_SPACING, align)}"',
+                block,
+            )
+            return block
+
+        tbl = cell_block_re.sub(format_cell, tbl)
+        if not label_col and any(cell.row == 0 for cell in table_cells):
             header_rows += 1
-        else:
-            head_row = re.sub(
-                r'(<hp:p [^>]*?)paraPrIDRef="(\d+)"',
-                lambda m: m.group(1) + f'paraPrIDRef="{pool.variant(m.group(2), H.CELL_LINE_SPACING, None)}"',
-                head_row,
-            )
-
-        rest = re.sub(
-            r'(<hp:p [^>]*?)paraPrIDRef="(\d+)"',
-            lambda m: m.group(1) + f'paraPrIDRef="{pool.variant(m.group(2), H.CELL_LINE_SPACING, None)}"',
-            rest,
-        )
-
-        tbl = prefix + head_row + rest
         tbl = fix_linesegs(tbl, H.CELL_LINE_SPACING)
 
         # 6-2. 열 너비
@@ -331,13 +361,25 @@ def apply(src: Path, dst: Path) -> list:
             widened += 1
             log.append(f"열 너비 재배분 {changed[0]} -> {changed[1]}")
 
+        tbl = L.reflow_table(tbl, char_prs, regular, boldfont)
         pieces.append(tbl)
         last = end
     pieces.append(format_body_segment(section[last:]))
     section = "".join(pieces)
+    width = re.search(r'<hp:pagePr\b.*?<hp:margin\b[^>]*/>', section, re.S)[0]
+    page_width = int(L.attr(width, 'width'))
+    margin = re.search(r'<hp:margin\b[^>]*/>', width)[0]
+    text_width = page_width - int(L.attr(margin, 'left')) - int(L.attr(margin, 'right'))
+    section = L.normalize(section, header, pool, text_width)
     log.append(f"본문 문단 줄간격 {H.BODY_LINE_SPACING}% : 문단모양 {len(body_para_ids)}개")
-    log.append(f"표 머리행 서식(음영·세로중간·가로가운데) : {header_rows}개 표")
-    log.append(f"표 셀 줄간격 {H.CELL_LINE_SPACING}% 적용, 열 너비 재배분 {widened}개 표")
+    log.append(f"표 머리행 음영: {header_rows}개 표")
+    log.append(
+        "표 셀 맞춤: 1행·1열 가로가운데/세로중앙, "
+        f"나머지 셀 가로왼쪽, 줄간격 {H.CELL_LINE_SPACING}%"
+    )
+    log.append(f"표 열 너비 재배분 {widened}개 표")
+    log.append("최종 열 폭으로 셀·행 높이 재계산; 한 쪽 이내 표는 글자처럼 취급, 초과 표만 해제/CELL")
+    log.append("표 경계 12pt: inline은 다음 문단, 긴 floating 표는 바깥 여백이 단독 소유; 앵커 캐시 갱신")
 
     H.set_text(entries, H.HEADER, pool.finish())
     H.set_text(entries, H.SECTION, section)

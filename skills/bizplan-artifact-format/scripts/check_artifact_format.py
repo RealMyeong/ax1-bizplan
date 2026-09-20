@@ -1,9 +1,10 @@
 """산출물 HWPX 서식 검사.
 
-    python check_artifact_format.py <파일.hwpx> [--json]
+    python check_artifact_format.py <파일.hwpx> [--json] [--no-front-matter]
 
 규칙은 references/01-format-rules.md 를 따른다. 표지~목차 제목의 불가침 구간은
-글리프 검사만 하고 서식 검사에서 제외한다.
+글리프 검사만 하고 서식 검사에서 제외한다. --no-front-matter 를 주면 목차 제목이
+없는 문서를 문서 시작부터 검사하며 목차 미발견을 위반으로 보지 않는다.
 
 종료 코드: 위반이 없으면 0, 있으면 1.
 """
@@ -24,7 +25,7 @@ import hwpx_format as H  # noqa: E402
 OVERLAP_TOLERANCE = 1.5
 
 
-def check(path: Path) -> list:
+def check(path: Path, no_front_matter: bool = False) -> list:
     entries = H.read_hwpx(path)
     header = H.get_text(entries, H.HEADER)
     section = H.get_text(entries, H.SECTION)
@@ -58,7 +59,8 @@ def check(path: Path) -> list:
     # 0. 불가침 구간 경계
     has_front = body_start is not None
     if body_start is None:
-        add("불가침 구간", "목차 문단을 찾지 못해 본문 시작 위치를 판정할 수 없음. 사용자 확인 필요")
+        if not no_front_matter:
+            add("불가침 구간", "목차 문단을 찾지 못해 본문 시작 위치를 판정할 수 없음. 사용자 확인 필요")
         body_start = 0
     front_fills = H.front_matter_fill_ids(section, body_start)
 
@@ -182,6 +184,7 @@ def check(path: Path) -> list:
     # 4-2. 제목 문단 - 위아래 간격 / 개요 스타일 / 장 쪽나눔
     styles = H.style_ids_by_name(header)
     all_paras = H.paragraphs(section)
+    first_para_off = all_paras[0][0] if all_paras else 0
     headings = []
     follows_h1 = {}  # 제목 오프셋 -> 직전 글자 있는 문단(빈 문단 제외)이 장 제목인가
     prev_level = None
@@ -213,7 +216,8 @@ def check(path: Path) -> list:
             got = H.re.search(r'styleIDRef="(\d+)"', attrs)
             if not got or got.group(1) != sid:
                 add("제목 스타일", f"{level}수준 제목에 '{H.HEADING_STYLE[level]}' 스타일 태그가 없음", text[:24])
-        if level == 1 and not H.re.search(r'pageBreak="1"', attrs):
+        if level == 1 and off > first_para_off and not H.re.search(r'pageBreak="1"', attrs):
+            # 문서 첫 문단은 이미 첫 쪽 머리이므로 쪽나눔 없이도 규칙을 만족한다
             add("제목 쪽나눔", "장 제목이 새 쪽에서 시작하지 않음", text[:24])
 
     first_heading_off = headings[0][0] if headings else None
@@ -266,6 +270,103 @@ def check(path: Path) -> list:
                 level = H.list_level_of(pp)
                 if text[0] != H.BULLETS[level]:
                     add("리스트", f"{level}수준 불릿 기호가 {text[0]!r} (규칙 {H.BULLETS[level]!r})", text[:24])
+
+    # 4-5. 캡션 - 표·그림 모두 대상 아래 / 가운데 / 10pt 보통 / 위 3pt·아래 10pt / 장-순번 / 본문 참조
+    if first_heading_off is not None:
+        body_paras = [(off, attrs, body) for off, attrs, body in all_paras
+                      if off >= first_heading_off and not H.in_any_span(spans, off)]
+
+        def holds_table(body: str) -> bool:
+            return "<hp:tbl " in body.split("<hp:linesegarray>")[0]
+
+        chapter = None
+        seen = {}      # (종류, 장) -> [순번]
+        captions = {}  # body_paras 인덱스 -> (종류, 장, 순번)
+        for idx, (off, attrs, body) in enumerate(body_paras):
+            runs = [r for r in H.para_visible_runs(body, char_prs) if r[0]]
+            text = "".join(t for _, t in runs)
+            if H.heading_level_of(body, char_prs) == 1:
+                chapter = H.chapter_number_of(text)
+                continue
+            cap = H.caption_of(text)
+            if not cap:
+                continue
+            kind, chap, seq, _title = cap
+            captions[idx] = (kind, chap, seq)
+            label = H.caption_label(kind, chap, seq)
+            if any(cp.height != H.BODY_TEXT_HEIGHT or cp.bold for cp, _ in runs):
+                add("캡션 서식", "캡션이 10pt 보통 굵기가 아님", label)
+            pid_m = H.re.search(r'paraPrIDRef="(\d+)"', attrs)
+            pp = para_prs.get(pid_m.group(1), {}) if pid_m else {}
+            if pp.get("align") != "CENTER":
+                add("캡션 서식", f"캡션이 가운데 정렬이 아님 ({pp.get('align')})", label)
+            if (pp.get("prev"), pp.get("next")) != H.CAPTION_MARGIN:
+                add("캡션 서식", f"캡션 위/아래 간격이 {pp.get('prev')}/{pp.get('next')} (규칙 {H.CAPTION_MARGIN[0]}/{H.CAPTION_MARGIN[1]})", label)
+            if kind == "표":
+                prev_tbl = idx > 0 and holds_table(body_paras[idx - 1][2])
+                if not prev_tbl:
+                    next_tbl = idx + 1 < len(body_paras) and holds_table(body_paras[idx + 1][2])
+                    add("캡션 위치",
+                        "표 캡션이 표 위에 있음. 규칙은 표 아래" if next_tbl else "표 캡션 바로 위에 표가 없음",
+                        label)
+            elif kind == "그림":
+                prev_pic = idx > 0 and H.holds_picture(body_paras[idx - 1][2])
+                if not prev_pic:
+                    next_pic = idx + 1 < len(body_paras) and H.holds_picture(body_paras[idx + 1][2])
+                    add("캡션 위치",
+                        "그림 캡션이 그림 위에 있음. 규칙은 그림 아래" if next_pic
+                        else "그림 캡션 바로 위에 그림이 없음",
+                        label)
+            if chapter is not None and chap != chapter:
+                add("캡션 번호", f"캡션의 장 번호 {chap} 이 현재 장 {chapter} 과 다름", label)
+            seen.setdefault((kind, chap), []).append(seq)
+        for (kind, chap), seqs in sorted(seen.items()):
+            if seqs != list(range(1, len(seqs) + 1)):
+                add("캡션 번호", f"{chap}장의 {kind} 번호가 1부터 순서대로가 아님: {seqs}")
+
+        # 본문 참조 - 모든 표·그림은 본문에서 최소 한 번 언급한다
+        refs = set()
+        for idx, (off, attrs, body) in enumerate(body_paras):
+            if idx in captions:
+                continue
+            refs |= H.caption_refs("".join(t for _, t in H.para_visible_runs(body, char_prs)))
+        for (a, b) in spans:
+            if a < body_start:
+                continue
+            for c in H.cells(section[a:b]):
+                for _cid, t in c.runs():
+                    refs |= H.caption_refs(t)
+        for idx in sorted(captions):
+            key = captions[idx]
+            if key not in refs:
+                add("캡션 참조", f"본문에서 {H.caption_label(*key)} 을 한 번도 참조하지 않음")
+
+    # 4-6. 그림 - 본문 폭 이내 / 글자처럼 취급 / BinData 등록
+    text_width = H.text_width_of(section)
+    manifest_ids = set()
+    try:
+        manifest_ids = set(H.re.findall(r'<opf:item id="([^"]+)"',
+                                        H.get_text(entries, H.CONTENT_HPF)))
+    except KeyError:
+        pass
+    for pno, m in enumerate(H.re.finditer(r"<hp:pic\b.*?</hp:pic>", section, H.re.S), start=1):
+        if H.in_any_span(spans, m.start()) or (body_start is not None and m.start() < body_start):
+            continue
+        pic = m.group(0)
+        where = f"{pno}번째 그림"
+        sz = H.re.search(r'<hp:sz width="(\d+)"', pic)
+        if sz and int(sz.group(1)) > text_width:
+            add("그림 폭",
+                f"그림 폭 {H.hwpunit_to_mm(int(sz.group(1))):.0f}mm 가 본문 폭"
+                f" {H.hwpunit_to_mm(text_width):.0f}mm 를 넘음. 오른쪽이 잘린다", where)
+        pos = H.re.search(r'<hp:pos treatAsChar="(\d)"', pic)
+        if pos and pos.group(1) != "1":
+            add("그림 배치", "그림이 글자처럼 취급이 아님. 본문 흐름에서 밀린다", where)
+        ref = H.re.search(r'<hc:img binaryItemIDRef="([^"]+)"', pic)
+        if ref and manifest_ids and ref.group(1) not in manifest_ids:
+            add("그림 등록",
+                f"binaryItemIDRef={ref.group(1)} 이 {H.CONTENT_HPF} 에 없음. 한/글이 그림을 버린다",
+                where)
 
     # 5. 표 머리행 - 음영 / 세로 중간 / 가로 가운데, 6. 열 너비, 표 속성
     for tno, tbl in enumerate(H.tables(section), start=1):
@@ -323,7 +424,7 @@ def main() -> int:
         print(f"파일 없음: {path}")
         return 2
 
-    issues = check(path)
+    issues = check(path, no_front_matter="--no-front-matter" in sys.argv)
     if "--json" in sys.argv:
         print(json.dumps(issues, ensure_ascii=False, indent=2))
         return 1 if issues else 0

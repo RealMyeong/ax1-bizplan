@@ -7,6 +7,8 @@
 목차 항목(장 굵게 + 절 들여쓰기 2단계, 본문 제목에서 재생성), 리스트 계층
 (단계별 기호 • - · · 와 내어쓰기)을 기존 문서에 소급 적용한다.
 목차 항목을 재생성하면 문단 수가 원본과 달라질 수 있다. 로그에 증감을 남긴다.
+표·그림 캡션(`[표 1-1] 제목`)은 가운데·10pt 보통·위 3pt/아래 10pt 로 맞추고,
+표 위에 놓인 표 캡션은 표 아래로 옮긴다 (규칙: 캡션은 모두 대상 아래).
 
 개정 이력표에는 오늘 날짜와 한 단계 올린 버전(v0.x)을 자동 기입하고, 출력 파일
 이름의 버전 조각도 같은 값으로 맞춘다 (-o 를 생략하면 `<이름>_v0.x.hwpx`).
@@ -287,7 +289,8 @@ def retrofit_hierarchy(section: str, pool: ParaPrPool, char_prs: dict, styles: d
         sid = styles.get(H.HEADING_STYLE[level])
         if sid:
             new_attrs = re.sub(r'styleIDRef="\d+"', f'styleIDRef="{sid}"', new_attrs)
-        if level == 1:
+        if level == 1 and i > 0:
+            # 문서 첫 문단은 이미 첫 쪽 머리이므로 쪽나눔을 넣지 않는다 (빈 첫 쪽 방지)
             new_attrs = re.sub(r'pageBreak="\d+"', 'pageBreak="1"', new_attrs)
         if new_attrs != attrs:
             edits.append((a, ta, f"<hp:p {new_attrs}>"))
@@ -422,10 +425,78 @@ def retrofit_hierarchy(section: str, pool: ParaPrPool, char_prs: dict, styles: d
     return section
 
 
+def retrofit_captions(section: str, pool: ParaPrPool, char_prs: dict, body_start: int,
+                      regular: H.Font, boldfont: H.Font, plain_cid, log: list) -> str:
+    """표·그림 캡션을 기존 문서에 소급 적용한다.
+
+    - 서식: 가운데 정렬, 10pt 보통 굵기, 위 3pt / 아래 10pt
+    - 위치: 표 캡션이 표 바로 위에 있고 바로 아래에 표가 없으면 표 아래로 옮긴다.
+      그림 캡션은 그림 개체를 판별할 수 없어 위치를 바꾸지 않는다
+    캡션은 만들지 않는다. 사람이 한/글이나 원고에 `[표 1-1] 제목` 으로 적은 문단만 다룬다.
+    """
+    width = H.text_width_of(section)
+    spans = H.table_spans(section)
+    paras = [(a, a + 7 + len(attrs), attrs, body) for a, attrs, body in H.paragraphs(section)]
+    body_idx = [i for i, (a, _ta, _attrs, _body) in enumerate(paras)
+                if a >= body_start and not H.in_any_span(spans, a)]
+
+    def holds_table(body: str) -> bool:
+        return "<hp:tbl " in body.split("<hp:linesegarray>")[0]
+
+    edits, styled, moved = [], 0, 0
+    for k, i in enumerate(body_idx):
+        a, ta, attrs, body = paras[i]
+        runs = [r for r in H.para_visible_runs(body, char_prs) if r[0]]
+        cap = H.caption_of("".join(t for _, t in runs))
+        if not cap:
+            continue
+        close = body.find("</hp:p>")
+        if close < 0:
+            continue
+        para_end = ta + close + 7
+        original = f"<hp:p {attrs}>" + body[: close + 7]
+        pid = re.search(r'paraPrIDRef="(\d+)"', attrs).group(1)
+        prev_v, next_v = H.CAPTION_MARGIN
+        new_pid = pool.variant(pid, pool.spacing_of(pid) or H.BODY_LINE_SPACING, "CENTER",
+                               margins={"left": 0, "intent": 0, "prev": prev_v, "next": next_v})
+        new_attrs = re.sub(r'paraPrIDRef="\d+"', f'paraPrIDRef="{new_pid}"', attrs)
+        para_xml = f"<hp:p {new_attrs}>" + body[: close + 7]
+        if plain_cid and any(cp.height != H.BODY_TEXT_HEIGHT or cp.bold for cp, _ in runs):
+            para_xml = re.sub(r'(<hp:run charPrIDRef=")\d+', lambda m: m.group(1) + plain_cid, para_xml)
+        para_xml = H.relayout_paragraph(para_xml, char_prs, regular, boldfont, horzsize=width)
+
+        if cap[0] == "표" and k + 1 < len(body_idx):
+            j = body_idx[k + 1]
+            prev_tbl = k > 0 and holds_table(paras[body_idx[k - 1]][3])
+            if holds_table(paras[j][3]) and not prev_tbl:
+                tb_a = paras[j][0]
+                span_end = next((b for (s0, b) in spans if s0 >= tb_a), None)
+                tp_end = section.find("</hp:p>", span_end) if span_end is not None else -1
+                if tp_end >= 0:
+                    tp_end += 7
+                    edits.append((a, para_end, ""))
+                    edits.append((tp_end, tp_end, para_xml))
+                    moved += 1
+                    log.append(f"표 캡션을 표 아래로 이동 :: {H.caption_label(*cap[:3])}")
+                    continue
+        if para_xml != original:
+            edits.append((a, para_end, para_xml))
+            styled += 1
+
+    for a, b, repl in sorted(edits, key=lambda e: (e[0], e[1]), reverse=True):
+        section = section[:a] + repl + section[b:]
+    log.append(f"캡션 서식(가운데·10pt·위3/아래10pt) : {styled}개 수정, 표 아래로 이동 {moved}개")
+    return section
+
+
 def record_revision(section: str, body_start: int, header: str,
                     regular: H.Font, boldfont: H.Font,
-                    note: str, author: str, log: list) -> tuple:
+                    note: str, author: str, log: list,
+                    force_version: str = "") -> tuple:
     """개정 이력표에 오늘 날짜·한 단계 올린 버전을 기입한다.
+
+    force_version 을 주면 자동 증가 대신 그 버전(예: v0.3)을 기입한다. 새 표지로
+    옮긴 문서가 이전 파일명 버전을 이어가야 할 때 쓴다.
 
     불가침 구간 예외: 내용 기입과 (빈 행이 없을 때의) 행 추가만 하며,
     서식과 칸 구조는 양식 그대로 둔다. 같은 날 같은 내역이 이미 마지막 행에
@@ -453,6 +524,11 @@ def record_revision(section: str, body_start: int, header: str,
         version = H.bump_version(last_ver)
     else:
         version = "v0.1"
+    if force_version:
+        if entries and force_version == (entries[-1][1][1] if len(entries[-1][1]) > 1 else ""):
+            log.append(f"개정 이력: 마지막 행이 이미 {force_version} 이라 그대로 둠")
+            return section, force_version
+        version = force_version
 
     row = H.next_revision_row(tbl)
     added = False
@@ -564,8 +640,14 @@ def fix_linesegs(xml: str, percent: int) -> str:
 
 
 def apply(src: Path, dst: Path = None, rev_note: str = "서식 적용",
-          rev_author: str = "", revision: bool = True) -> list:
-    """dst 가 None 이면 개정 버전에 맞춰 `<이름>_v0.x.hwpx` 로 저장한다."""
+          rev_author: str = "", revision: bool = True,
+          no_front_matter: bool = False) -> list:
+    """dst 가 None 이면 개정 버전에 맞춰 `<이름>_v0.x.hwpx` 로 저장한다.
+
+    no_front_matter 가 True 이면 목차 제목이 없는 문서(표지 양식 없이 본문만 있는
+    문서)를 문서 시작부터 서식 적용 구간으로 본다. 사용자가 명시적으로 확인한
+    경우에만 쓴다.
+    """
     log = []
     entries = H.read_hwpx(src)
     header = H.get_text(entries, H.HEADER)
@@ -597,7 +679,13 @@ def apply(src: Path, dst: Path = None, rev_note: str = "서식 적용",
         pass
 
     # 3. 경계 판정 - 목차 다음부터가 서식 적용 구간이다
-    body_start = H.body_start_offset(section)
+    def boundary():
+        v = H.body_start_offset(section)
+        return 0 if (v is None and no_front_matter) else v
+
+    body_start = boundary()
+    if body_start == 0 and no_front_matter and H.body_start_offset(section) is None:
+        log.append("목차 문단이 없는 문서. --no-front-matter 로 문서 시작부터 서식 적용 구간으로 봄 (불가침 구간 없음)")
     if body_start is None:
         log.append("[중단] 목차 문단을 찾지 못했다. 본문 시작 위치를 확인받기 전에는 서식을 바꾸지 않는다")
         final = out_path()
@@ -606,15 +694,16 @@ def apply(src: Path, dst: Path = None, rev_note: str = "서식 적용",
         H.write_hwpx(entries, final)
         log.append(f"저장: {final}")
         return log
-    log.append(f"불가침 구간: 문서 시작 ~ 오프셋 {body_start} (표지·문서정보·개정이력·목차) 는 양식 그대로 둠"
-               " (예외: 글자 깨짐 교정과 개정 이력 기입)")
+    if body_start > 0:
+        log.append(f"불가침 구간: 문서 시작 ~ 오프셋 {body_start} (표지·문서정보·개정이력·목차) 는 양식 그대로 둠"
+                   " (예외: 글자 깨짐 교정과 개정 이력 기입)")
 
     # 3-1. 개정 이력 - 오늘 날짜와 한 단계 올린 버전을 기입한다
     new_version = None
     if revision:
         section, new_version = record_revision(section, body_start, header,
                                                regular, boldfont, rev_note, rev_author, log)
-        body_start = H.body_start_offset(section)  # 기입으로 오프셋이 밀렸을 수 있다
+        body_start = boundary()  # 기입으로 오프셋이 밀렸을 수 있다
 
     # 4. 본문 표 머리행 배경색 - 표지가 쓰는 정의는 건드리지 않는다
     front_fills = H.front_matter_fill_ids(section, body_start)
@@ -644,7 +733,12 @@ def apply(src: Path, dst: Path = None, rev_note: str = "서식 적용",
     section = retrofit_hierarchy(section, pool, char_prs, styles, body_start,
                                  regular, boldfont, plain_cid, bold_cid, log)
     spans = H.table_spans(section)  # 목차 재생성으로 오프셋이 밀렸을 수 있다
-    body_start = H.body_start_offset(section)
+    body_start = boundary()
+
+    # 5-2. 표·그림 캡션 - 서식 통일, 표 위의 표 캡션은 표 아래로
+    section = retrofit_captions(section, pool, char_prs, body_start, regular, boldfont, plain_cid, log)
+    spans = H.table_spans(section)
+    body_start = boundary()
 
     # 6. 표 - 글자처럼 취급 / 머리행 서식 / 셀 줄간격 / 열 너비
     pieces, last = [], 0
@@ -720,7 +814,7 @@ def apply(src: Path, dst: Path = None, rev_note: str = "서식 적용",
 
     # 7. 본문(표 밖) 줄 배치 캐시
     spans = H.table_spans(section)
-    body_start = H.body_start_offset(section)
+    body_start = boundary()
     out, cursor = [], body_start
     out.append(section[:body_start])
     for (a, b) in spans:
@@ -763,6 +857,8 @@ def main() -> int:
     ap.add_argument("--rev-author", default="", help="개정 이력의 작성자 칸")
     ap.add_argument("--no-revision", action="store_true",
                     help="개정 이력·파일명 버전을 건드리지 않음 (출력 기본 이름은 <이름>_fmt.hwpx)")
+    ap.add_argument("--no-front-matter", action="store_true",
+                    help="목차 제목이 없는 문서를 문서 시작부터 적용 구간으로 봄 (사용자 확인 후에만 사용)")
     args = ap.parse_args()
 
     src = args.input
@@ -779,7 +875,8 @@ def main() -> int:
     elif args.out:
         dst = args.out
 
-    for line in apply(src, dst, args.rev_note, args.rev_author, not args.no_revision):
+    for line in apply(src, dst, args.rev_note, args.rev_author, not args.no_revision,
+                      no_front_matter=args.no_front_matter):
         print(line)
     print("\n적용이 끝나면 check_artifact_format.py 로 반드시 재검사할 것")
     return 0

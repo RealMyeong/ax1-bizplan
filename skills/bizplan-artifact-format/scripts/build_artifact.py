@@ -11,9 +11,10 @@
     | ... |     표 (첫 줄이 머리행)      빈 줄 구분   본문 문단
     -, *        불릿 리스트. 들여쓰기 2칸마다 한 단계, 기호 • - · ·
     1. 2. 3.    번호 목록. 단계별 1. 가. 1) 로 바꾸고 내어쓰기를 준다
+    [[그림: 경로 | 120mm | [그림 1-1] 제목]]   그림. ![제목](경로) 도 같은 뜻
 개정 이력표에는 오늘 날짜와 v0.1(양식이 비어 있을 때)을 기입하고, 출력 파일
 이름의 버전 조각도 같은 값으로 맞춘다.
-아직 안 되는 것: 그림, 쪽번호, 병합 셀, 각주
+아직 안 되는 것: 쪽번호, 병합 셀, 각주, 표 안 그림
 """
 
 from __future__ import annotations
@@ -97,6 +98,14 @@ def parse_markdown(text: str) -> list:
         if m:
             flush()
             blocks.append(("h", min(len(m.group(1)), 4), strip_inline(m.group(2))))
+            i += 1
+            continue
+
+        # 그림은 strip_inline 이 지우기 전에 잡는다. 놓치면 조용히 사라진다.
+        spec = H.parse_picture_spec(stripped)
+        if spec:
+            flush()
+            blocks.append(("pic", spec))
             i += 1
             continue
 
@@ -332,6 +341,55 @@ class Emitter:
             style=self.styles.get(H.TOC_STYLE[2], "0"),
         )
 
+    def picture(self, item_id: str, width: int, height: int, px, name: str) -> str:
+        """그림 한 개를 담은 가운데 정렬 문단.
+
+        줄 배치 캐시는 표 문단과 같이 **본문 10pt 기준**으로 만든다. 그림 높이로
+        잡으면 본문 줄간격 160% 가 그림 높이의 60% 만큼 빈 자리를 덧붙인다.
+        그림 자체 크기는 hp:sz 와 hp:orgSz 가 정한다.
+        """
+        char_id = self.pool.char(H.BODY_TEXT_HEIGHT, False)
+        dim_w = int(round(px[0] * H.HWPUNIT_PER_PX))
+        dim_h = int(round(px[1] * H.HWPUNIT_PER_PX))
+        comment = esc(f"그림입니다.\n원본 그림의 이름: {name}\n"
+                      f"원본 그림의 크기: 가로 {px[0]}pixel, 세로 {px[1]}pixel")
+        pic = (
+            f'<hp:pic id="{self._id()}" zOrder="0" numberingType="PICTURE" textWrap="SQUARE"'
+            f' textFlow="BOTH_SIDES" lock="0" dropcapstyle="None" href="" groupLevel="0"'
+            f' instid="{self._id()}" reverse="0">'
+            f'<hp:offset x="0" y="0"/>'
+            f'<hp:orgSz width="{width}" height="{height}"/>'
+            f'<hp:curSz width="0" height="0"/>'
+            f'<hp:flip horizontal="0" vertical="0"/>'
+            f'<hp:rotationInfo angle="0" centerX="{width // 2}" centerY="{height // 2}" rotateimage="1"/>'
+            f"<hp:renderingInfo>"
+            f'<hc:transMatrix e1="1" e2="0" e3="0" e4="0" e5="1" e6="0"/>'
+            f'<hc:scaMatrix e1="1" e2="0" e3="0" e4="0" e5="1" e6="0"/>'
+            f'<hc:rotMatrix e1="1" e2="0" e3="0" e4="0" e5="1" e6="0"/>'
+            f"</hp:renderingInfo>"
+            f'<hc:img binaryItemIDRef="{item_id}" bright="0" contrast="0" effect="REAL_PIC" alpha="0"/>'
+            f'<hp:imgRect><hc:pt0 x="0" y="0"/><hc:pt1 x="{width}" y="0"/>'
+            f'<hc:pt2 x="{width}" y="{height}"/><hc:pt3 x="0" y="{height}"/></hp:imgRect>'
+            f'<hp:imgClip left="0" right="{dim_w}" top="0" bottom="{dim_h}"/>'
+            f'<hp:inMargin left="0" right="0" top="0" bottom="0"/>'
+            f'<hp:imgDim dimwidth="{dim_w}" dimheight="{dim_h}"/>'
+            f"<hp:effects/>"
+            f'<hp:sz width="{width}" widthRelTo="ABSOLUTE" height="{height}"'
+            f' heightRelTo="ABSOLUTE" protect="0"/>'
+            f'<hp:pos treatAsChar="1" affectLSpacing="0" flowWithText="1" allowOverlap="1"'
+            f' holdAnchorAndSO="0" vertRelTo="PARA" horzRelTo="PARA" vertAlign="TOP"'
+            f' horzAlign="LEFT" vertOffset="0" horzOffset="0"/>'
+            f'<hp:outMargin left="0" right="0" top="0" bottom="0"/>'
+            f"<hp:shapeComment>{comment}</hp:shapeComment>"
+            f"</hp:pic>"
+        )
+        return (
+            f'<hp:p id="{self._id()}" paraPrIDRef="{self.pool.center_para}" styleIDRef="0"'
+            f' pageBreak="0" columnBreak="0" merged="0">'
+            f'<hp:run charPrIDRef="{char_id}">{pic}<hp:t/></hp:run>'
+            f"{self._linesegs('', H.BODY_TEXT_HEIGHT, False, self.text_width)}</hp:p>"
+        )
+
     def table(self, rows: list, regular: H.Font, boldfont: H.Font) -> str:
         n_col = len(rows[0])
         total = self.text_width - 2 * TABLE_OUT_MARGIN - 4
@@ -424,20 +482,25 @@ def plain_border_fill(header: str) -> str:
 
 
 def default_template():
-    """저장소의 표지 양식을 스스로 찾는다.
+    """스킬에 포함된 표지 양식을 스스로 찾는다.
 
-    스킬이 `<저장소>/skills/bizplan-artifact-format/` 에 있으므로 스크립트의 실제
-    위치에서 위로 올라가며 `document_form/` 을 찾는다. `~/.claude/skills/` 에
-    정션(심볼릭 링크)으로 설치했더라도 resolve() 가 실제 위치를 따라가므로
-    어느 폴더에서 실행해도 같은 양식을 쓴다.
+    양식은 스킬 폴더의 `assets/templates/` 에 있다. 스크립트의 실제 위치
+    (`<스킬>/scripts/`) 기준으로 찾으므로 `~/.claude/skills/` 에 정션(심볼릭
+    링크)으로 설치했든 ZIP 사본으로 설치했든 어느 폴더에서 실행해도 같은
+    양식을 쓴다. 이름에 `양식` 이 든 빈 양식을 우선하고, 없으면 첫 파일을 쓴다.
+    예전 저장소 최상위 `document_form/` 도 후순위로 계속 찾는다.
     """
-    for parent in Path(__file__).resolve().parents:
-        d = parent / "document_form"
+    here = Path(__file__).resolve()
+    candidates = [here.parent.parent / "assets" / "templates"]
+    candidates += [parent / "document_form" for parent in here.parents]
+    for d in candidates:
         if not d.is_dir():
             continue
         forms = sorted(d.glob("*.hwpx"))
+        if not forms:
+            continue
         blank = [f for f in forms if "양식" in f.name]
-        return (blank or forms or [None])[0]
+        return (blank or forms)[0]
     return None
 
 
@@ -508,8 +571,58 @@ def fill_cover(section: str, header: str, title: str, project: str, log: list) -
     return section
 
 
+def prepare_pictures(blocks: list, entries: list, image_dir: Path, text_width: int, log: list) -> int:
+    """그림 파일을 읽어 BinData 에 넣고 각 자리표시에 표시 크기를 채운다.
+
+    폭은 본문 폭을 넘지 않게 줄인다. 넘치면 오른쪽이 여백을 침범해 잘린다.
+    캡션 번호는 만들지 않는다. 사람이 `[그림 1-1] 제목` 으로 적은 것만 쓰고,
+    형식이 어긋나면 경고만 남긴다 (검사기가 캡션으로 세지 못한다).
+    """
+    specs = [b[1] for b in blocks if b[0] == "pic"]
+    if not specs:
+        return 0
+    max_mm = H.hwpunit_to_mm(text_width)
+    for spec in specs:
+        path = Path(spec["path"])
+        if not path.is_absolute():
+            path = image_dir / path
+        fmt = H.PICTURE_FORMATS.get(path.suffix.lower())
+        if fmt is None:
+            raise SystemExit(f"지원하지 않는 그림 형식: {path} (png/jpg/bmp/gif 만 됨)")
+        if not path.is_file():
+            raise SystemExit(f"그림 파일 없음: {path}")
+        data = path.read_bytes()
+        px = H.image_pixels(data, fmt)
+        width_mm = spec["width_mm"]
+        if width_mm > max_mm:
+            log.append(f"[경고] 그림 폭 {width_mm}mm 가 본문 폭 {max_mm:.1f}mm 를 넘어 줄임 :: {path.name}")
+            if spec["height_mm"]:
+                spec["height_mm"] *= max_mm / width_mm
+            width_mm = max_mm
+        height_mm = spec["height_mm"]
+        if height_mm is None:
+            if px is None:
+                raise SystemExit(
+                    f"{path}: 그림 크기를 읽지 못했다. 자리표시에 '120x70mm' 처럼 높이까지 적을 것")
+            height_mm = width_mm * px[1] / px[0]
+        if px is None:
+            # 비율만 있으면 되므로 표시 크기를 픽셀 대신 쓴다
+            px = (max(1, round(width_mm)), max(1, round(height_mm)))
+        spec["item_id"] = H.add_bin_data(entries, data, fmt)
+        spec["w"] = H.mm_to_hwpunit(width_mm)
+        spec["h"] = H.mm_to_hwpunit(height_mm)
+        spec["px"] = px
+        spec["name"] = path.name
+        if spec["caption"] and not H.CAPTION_RE.match(spec["caption"]):
+            log.append(f"[경고] 그림 캡션이 '[그림 장-순번] 제목' 형식이 아님: {spec['caption']!r}")
+        log.append(f"그림 {path.name} -> {spec['item_id']} "
+                   f"({width_mm:.0f}x{height_mm:.0f}mm, 원본 {px[0]}x{px[1]}px)")
+    return len(specs)
+
+
 def build(template: Path, content: Path, out: Path, title="", project="", make_toc=True,
-          rev_note="최초 작성", rev_author="", revision=True) -> list:
+          rev_note="최초 작성", rev_author="", revision=True, rev_version="",
+          image_dir: Path = None) -> list:
     log = []
     entries = H.read_hwpx(template)
     header = H.get_text(entries, H.HEADER)
@@ -522,12 +635,15 @@ def build(template: Path, content: Path, out: Path, title="", project="", make_t
     for b in blocks:
         kinds[b[0]] = kinds.get(b[0], 0) + 1
     log.append(f"본문 블록 {len(blocks)}개 (제목 {kinds.get('h', 0)}, 문단 {kinds.get('p', 0)}, "
-               f"불릿 {kinds.get('li', 0)}, 번호 {kinds.get('ol', 0)}, 표 {kinds.get('table', 0)})")
+               f"불릿 {kinds.get('li', 0)}, 번호 {kinds.get('ol', 0)}, 표 {kinds.get('table', 0)}, "
+               f"그림 {kinds.get('pic', 0)})")
 
     pool = StylePool(header)
     regular, boldfont = H.Font(H.MALGUN), H.Font(H.MALGUN_BOLD)
     styles = H.style_ids_by_name(header)
     emitter = Emitter(pool, H.text_width_of(section), plain_border_fill(header), regular, boldfont, styles)
+
+    prepare_pictures(blocks, entries, image_dir or content.parent, emitter.text_width, log)
 
     parts = []
 
@@ -556,6 +672,14 @@ def build(template: Path, content: Path, out: Path, title="", project="", make_t
         elif block[0] == "table":
             parts.append(emitter.table(block[1], regular, boldfont))
             prev_h = None
+        elif block[0] == "pic":
+            spec = block[1]
+            parts.append(emitter.picture(spec["item_id"], spec["w"], spec["h"],
+                                         spec["px"], spec["name"]))
+            # 캡션은 그림 바로 다음 문단. 서식은 아래 A.apply 의 캡션 규칙이 맞춘다
+            if spec["caption"]:
+                parts.append(emitter.body(spec["caption"]))
+            prev_h = None
 
     section = fill_cover(section, header, title, project, log)
 
@@ -564,7 +688,8 @@ def build(template: Path, content: Path, out: Path, title="", project="", make_t
     if revision:
         body_start = H.body_start_offset(section)
         section, version = A.record_revision(section, body_start, header,
-                                             regular, boldfont, rev_note, rev_author, log)
+                                             regular, boldfont, rev_note, rev_author, log,
+                                             force_version=rev_version)
     if version:
         wanted = H.versioned_name(out, version)
         if wanted.name != out.name:
@@ -588,7 +713,7 @@ def build(template: Path, content: Path, out: Path, title="", project="", make_t
 def main() -> int:
     ap = argparse.ArgumentParser(description="표지 양식에 본문을 채워 산출물 HWPX 를 만든다")
     ap.add_argument("--template", type=Path, default=None,
-                    help="표지 양식 .hwpx. 생략하면 저장소 document_form/ 에서 자동으로 찾음")
+                    help="표지 양식 .hwpx. 생략하면 스킬의 assets/templates/ 에서 자동으로 찾음")
     ap.add_argument("--content", required=True, type=Path, help="본문 마크다운")
     ap.add_argument("-o", "--out", required=True, type=Path)
     ap.add_argument("--title", default="", help="표지 제목 자리표시자를 이 글자로 채움")
@@ -597,6 +722,10 @@ def main() -> int:
     ap.add_argument("--rev-note", default="최초 작성", help="개정 이력의 개정내역 칸 (기본: 최초 작성)")
     ap.add_argument("--rev-author", default="", help="개정 이력의 작성자 칸")
     ap.add_argument("--no-revision", action="store_true", help="개정 이력·파일명 버전을 건드리지 않음")
+    ap.add_argument("--rev-version", default="",
+                    help="개정 이력에 기입할 버전을 직접 지정 (예: v0.3). 생략하면 v0.1 또는 자동 증가")
+    ap.add_argument("--image-dir", type=Path, default=None,
+                    help="그림 상대경로의 기준 폴더. 생략하면 본문 마크다운이 있는 폴더")
     args = ap.parse_args()
 
     template = args.template or default_template()
@@ -611,7 +740,8 @@ def main() -> int:
             return 2
 
     for line in build(template, args.content, args.out, args.title, args.project, not args.no_toc,
-                      args.rev_note, args.rev_author, not args.no_revision):
+                      args.rev_note, args.rev_author, not args.no_revision,
+                      args.rev_version, args.image_dir):
         print(line)
     print("\ncheck_artifact_format.py 로 검사하고 한/글에서 직접 열어 확인할 것")
     return 0

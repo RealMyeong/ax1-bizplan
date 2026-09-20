@@ -45,6 +45,13 @@ BULLETS = {1: "•", 2: "-", 3: "·", 4: "·"}
 LIST_INDENT_STEP = 1000  # 단계당 왼쪽여백 증가분
 GANADA = "가나다라마바사아자차카타파하"
 
+# 그림 - 본문 폭 이내, 캡션 문단 바로 위. 기본 폭은 본문 폭을 넘지 않는 선에서 쓴다.
+PICTURE_DEFAULT_WIDTH_MM = 140.0
+HWPUNIT_PER_MM = 7200 / 25.4
+HWPUNIT_PER_PX = 7200 / 96  # 96dpi 기준 픽셀 -> HWPUNIT
+PICTURE_FORMATS = {".png": "png", ".jpg": "jpg", ".jpeg": "jpg", ".bmp": "bmp", ".gif": "gif"}
+PICTURE_MEDIA_TYPE = {"png": "image/png", "jpg": "image/jpeg", "bmp": "image/bmp", "gif": "image/gif"}
+
 MALGUN = Path(r"C:\Windows\Fonts\malgun.ttf")
 MALGUN_BOLD = Path(r"C:\Windows\Fonts\malgunbd.ttf")
 
@@ -59,6 +66,7 @@ GLYPH_REPLACEMENTS = {
 SECTION = "Contents/section0.xml"
 HEADER = "Contents/header.xml"
 PREVIEW = "Preview/PrvText.txt"
+CONTENT_HPF = "Contents/content.hpf"  # 그림을 등록하는 매니페스트
 
 
 # --- ZIP 입출력 --------------------------------------------------------------
@@ -616,6 +624,148 @@ def list_level_of(margins: dict) -> int:
     """
     base = margins.get("left", 0) + margins.get("intent", 0)
     return max(1, min(4, round(base / LIST_INDENT_STEP) + 1))
+
+
+# --- 그림 ----------------------------------------------------------------------
+# 본문 그림은 마크다운에 자리표시 문단 하나로 적는다. 폭은 mm 로, 캡션은 사람이
+# `[그림 1-1] 제목` 으로 직접 적는다 (캡션 번호는 스크립트가 만들지 않는다).
+#     [[그림: images/개념도.png | 120mm | [그림 1-1] 불량 역추적 개념도]]
+# 표준 마크다운 그림 문법도 같은 뜻으로 읽는다. 이것을 읽지 않으면 본문의
+# `![...](...)` 가 조용히 사라진다.
+#     ![[그림 1-1] 불량 역추적 개념도](images/개념도.png)
+PICTURE_PLACEHOLDER_RE = re.compile(r"^\[\[\s*그림\s*[:：]\s*(?P<body>.+?)\s*\]\]$")
+PICTURE_MD_RE = re.compile(r'^!\[(?P<caption>.*)\]\(\s*(?P<path>[^)\s]+)(?:\s+"[^"]*")?\s*\)$')
+PICTURE_SIZE_RE = re.compile(r"^(?P<w>\d+(?:\.\d+)?)\s*(?:[xX×]\s*(?P<h>\d+(?:\.\d+)?))?\s*mm$", re.I)
+
+
+def mm_to_hwpunit(value: float) -> int:
+    return int(round(value * HWPUNIT_PER_MM))
+
+
+def hwpunit_to_mm(value: int) -> float:
+    return value / HWPUNIT_PER_MM
+
+
+def image_pixels(data: bytes, fmt: str):
+    """그림 파일 머리글에서 (가로, 세로) 픽셀. 읽지 못하면 None.
+
+    비율을 지켜 높이를 정할 때만 쓴다. 외부 패키지를 쓰지 않으려고 머리글만 읽는다.
+    """
+    try:
+        if fmt == "png" and data[:8] == b"\x89PNG\r\n\x1a\n":
+            return struct.unpack(">II", data[16:24])
+        if fmt == "gif":
+            return struct.unpack("<HH", data[6:10])
+        if fmt == "bmp":
+            w, h = struct.unpack("<ii", data[18:26])
+            return w, abs(h)
+        if fmt == "jpg":
+            sof = (0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF)
+            i = 2
+            while i < len(data):
+                if data[i] != 0xFF:
+                    i += 1
+                    continue
+                if data[i + 1] in sof:
+                    h, w = struct.unpack(">HH", data[i + 5 : i + 9])
+                    return w, h
+                i += 2 + struct.unpack(">H", data[i + 2 : i + 4])[0]
+    except Exception:
+        return None
+    return None
+
+
+def parse_picture_spec(text: str, default_width_mm: float = PICTURE_DEFAULT_WIDTH_MM):
+    """그림 자리표시 문단이면 {path, width_mm, height_mm, caption}, 아니면 None."""
+    stripped = text.strip()
+    md = PICTURE_MD_RE.match(stripped)
+    if md:
+        return {"path": md.group("path"), "width_mm": default_width_mm,
+                "height_mm": None, "caption": md.group("caption").strip() or None}
+    m = PICTURE_PLACEHOLDER_RE.match(stripped)
+    if not m:
+        return None
+    parts = [p.strip() for p in m.group("body").split("|")]
+    spec = {"path": parts[0], "width_mm": default_width_mm, "height_mm": None, "caption": None}
+    for p in parts[1:]:
+        size = PICTURE_SIZE_RE.match(p)
+        if size:
+            spec["width_mm"] = float(size.group("w"))
+            spec["height_mm"] = float(size.group("h")) if size.group("h") else None
+        elif p:
+            spec["caption"] = p
+    return spec
+
+
+def add_bin_data(entries: list, data: bytes, fmt: str) -> str:
+    """그림 바이트를 BinData 에 넣고 매니페스트에 등록한 뒤 binaryItemIDRef 를 돌려준다.
+
+    한/글이 쓴 문서와 같은 형태로 `Contents/content.hpf` 의 opf:manifest 에만
+    등록한다 (이 양식의 header.xml 에는 binDataList 가 없다).
+    `isEmbeded="1"` 이 없으면 한/글이 그림을 버린다.
+    BinData 항목은 무압축이어야 하며 write_hwpx 가 이를 보장한다.
+    """
+    try:
+        hpf = get_text(entries, CONTENT_HPF)
+    except KeyError:
+        raise SystemExit(f"양식에 {CONTENT_HPF} 가 없다. 그림을 등록할 수 없다")
+    if "</opf:manifest>" not in hpf:
+        raise SystemExit(f"{CONTENT_HPF} 에 opf:manifest 가 없다. 그림을 등록할 수 없다")
+    ids = set(re.findall(r'<opf:item id="([^"]+)"', hpf))
+    names = {e.name.lower() for e in entries}
+    n = 1
+    while f"image{n}" in ids or f"bindata/image{n}.{fmt}" in names:
+        n += 1
+    item_id = f"image{n}"
+    href = f"BinData/{item_id}.{fmt}"
+    entries.append(Entry(name=href, data=data, compress_type=zipfile.ZIP_STORED))
+    media = PICTURE_MEDIA_TYPE.get(fmt, f"image/{fmt}")
+    item = f'<opf:item id="{item_id}" href="{href}" media-type="{media}" isEmbeded="1"/>'
+    set_text(entries, CONTENT_HPF, hpf.replace("</opf:manifest>", item + "</opf:manifest>", 1))
+    return item_id
+
+
+def picture_item_refs(section: str) -> list:
+    """본문이 실제로 참조하는 binaryItemIDRef 목록."""
+    return re.findall(r'<hc:img binaryItemIDRef="([^"]+)"', section)
+
+
+def holds_picture(body: str) -> bool:
+    """문단이 그림 개체를 담고 있는지. 줄 배치 캐시 앞부분만 본다."""
+    return "<hp:pic " in body.split("<hp:linesegarray>")[0]
+
+
+# --- 캡션 ----------------------------------------------------------------------
+# 표·그림 캡션은 모두 대상 **아래**에 둔다. `[표 1-1] 제목` / `[그림 1-1] 제목`,
+# 번호는 장-순번. 10pt 보통 굵기, 가운데 정렬, 위 3pt / 아래 10pt.
+CAPTION_KINDS = ("표", "그림")
+CAPTION_MARGIN = (300, 1000)  # (위, 아래) HWPUNIT
+CAPTION_RE = re.compile(r"^\[(표|그림)\s*(\d+)-(\d+)\]\s*(.*)$")
+# 본문 참조. "표 1-1", "[표 1-1]", "<표 1-1>" 모두 인정한다.
+CAPTION_REF_RE = re.compile(r"(표|그림)\s*(\d+)-(\d+)")
+
+
+def caption_of(text: str):
+    """캡션 문단이면 (종류, 장, 순번, 제목), 아니면 None."""
+    m = CAPTION_RE.match(text.strip())
+    if not m:
+        return None
+    return m.group(1), int(m.group(2)), int(m.group(3)), m.group(4).strip()
+
+
+def caption_label(kind: str, chapter: int, seq: int) -> str:
+    return f"[{kind} {chapter}-{seq}]"
+
+
+def chapter_number_of(heading_text: str):
+    """장 제목 `1. 문서 개요` 에서 장 번호. 번호가 없으면 None."""
+    m = re.match(r"\s*(\d+)", heading_text)
+    return int(m.group(1)) if m else None
+
+
+def caption_refs(text: str) -> set:
+    """글자 속의 캡션 참조 (종류, 장, 순번) 집합."""
+    return {(m.group(1), int(m.group(2)), int(m.group(3))) for m in CAPTION_REF_RE.finditer(text)}
 
 
 def para_visible_runs(body: str, char_prs: dict) -> list:

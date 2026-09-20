@@ -67,6 +67,12 @@ INSTALLATION_GUIDES = (
 APPROVED_HWPX_ASSET = Path("skills/bizplan-hwpx/assets/templates/ax1-deliverable-cover.hwpx")
 HWPX_TEMPLATE_MANIFEST = Path("skills/bizplan-hwpx/assets/templates/template-manifest.json")
 APPROVED_XLSX_ASSET = Path("skills/ax1-budget/assets/templates/ax1-budget-ledger.xlsx")
+# bizplan-artifact-format 표지 양식: 빈 양식·표기 예시·사업별 표지. 실제 계획서 본문이 아님.
+ARTIFACT_FORMAT_TEMPLATES = {
+    Path("skills/bizplan-artifact-format/assets/templates/[산출물] 표지 양식.hwpx"),
+    Path("skills/bizplan-artifact-format/assets/templates/[산출물] 제조암묵지 표지.hwpx"),
+    Path("skills/bizplan-artifact-format/assets/templates/[산출물] 청년바우처 표지.hwpx"),
+}
 # User-approved synthetic output, not a reusable template or arbitrary document exemption.
 APPROVED_HWPX_EXAMPLES = {
     Path("examples/hwpx/DXS-AX-TST-표흐름_합성검증-20260907-v0.1.hwpx"):
@@ -319,7 +325,7 @@ def validate_no_private_artifacts() -> None:
         if path.is_file()
         and not any(part in excluded_roots for part in path.relative_to(ROOT).parts)
         and path.suffix.lower() in FORBIDDEN_ARTIFACT_SUFFIXES
-        and path.relative_to(ROOT) not in {APPROVED_HWPX_ASSET, APPROVED_XLSX_ASSET, *APPROVED_HWPX_EXAMPLES}
+        and path.relative_to(ROOT) not in {APPROVED_HWPX_ASSET, APPROVED_XLSX_ASSET, *APPROVED_HWPX_EXAMPLES, *ARTIFACT_FORMAT_TEMPLATES}
     ]
     if forbidden:
         raise ValueError(

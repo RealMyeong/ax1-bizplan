@@ -118,6 +118,8 @@ def describe(para: str, heading_styles: dict):
     if level:
         return 'heading', level
     text = H.unescape(''.join(re.findall(r'<hp:t>([^<]*)</hp:t>', para)))
+    if re.search(r'<hp:pic[ >/]', para):
+        return 'picture', None
     return ('list' if re.match(r'^(?:• |\d+\.\s)', text.lstrip()) else 'body'), None
 
 
@@ -138,13 +140,20 @@ def layout_plan(section: str, header: str):
         plan.append(dict(start=start, end=end, xml=para, kind=kind, level=level,
                          table=table[0] if table else None, height=table_h,
                          floating=table_h > height, prev=0, top=0, bottom=0))
+    props = H.parse_para_prs(header)
+    for i, item in enumerate(plan):
+        # 그림 바로 뒤의 가운데 정렬 본문 문단은 캡션으로 본다 (bizplan-hwpx-picture 삽입 결과)
+        if i and plan[i - 1]['kind'] == 'picture' and item['kind'] == 'body'                 and props.get(attr(item['xml'], 'paraPrIDRef'), {}).get('align') == 'CENTER':
+            item['kind'] = 'caption'
     for i, item in enumerate(plan):
         if not i or attr(item['xml'], 'pageBreak') == '1':
             continue
         previous = plan[i - 1]
         table_edge = item['kind'] == 'table' or previous['kind'] == 'table'
-        heading_edge = item['level'] in {2, 3} and previous['kind'] in {'body', 'list', 'table'}
-        gap = H.TABLE_BOUNDARY_SPACING if table_edge else H.HEADING_TOP_SPACING if heading_edge else 0
+        heading_edge = item['level'] in {2, 3} and previous['kind'] in {'body', 'list', 'table', 'caption'}
+        picture_edge = item['kind'] == 'picture' or previous['kind'] == 'caption'             or (previous['kind'] == 'picture' and item['kind'] != 'caption')
+        gap = (H.TABLE_BOUNDARY_SPACING if table_edge else H.HEADING_TOP_SPACING if heading_edge
+               else H.PICTURE_BOUNDARY_SPACING if picture_edge else 0)
         # Exactly one owner per edge. Floating objects use external margins,
         # as paragraph spacing alone does not reliably reserve their wrap area.
         if previous['floating']:

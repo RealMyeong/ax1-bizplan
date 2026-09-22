@@ -1,0 +1,6 @@
+interface:
+  display_name: "AX1 산출물 서식"
+  short_description: "산출물 HWPX에 팀 표준 서식 적용과 글자 깨짐·열 너비 검사"
+  default_prompt: "$bizplan-artifact-format을 사용해 산출물 HWPX의 서식을 팀 표준(맑은 고딕 10pt, 본문 160%, 표 셀 120%, 표 1행 #D9D9D9 중간 맞춤)으로 맞추고 표지~목차는 그대로 둔 채 글자 깨짐과 열 너비를 검사해줘."
+policy:
+  allow_implicit_invocation: true

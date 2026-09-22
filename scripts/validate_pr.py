@@ -8,7 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from build_release import APPROVED_HWPX_EXAMPLES
+from build_release import APPROVED_HWPX_EXAMPLES, ARTIFACT_FORMAT_TEMPLATES
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -57,6 +57,7 @@ def main() -> int:
         and path != APPROVED_HWPX_ASSET
         # Exact approved example paths only; the mandatory suite build verifies hashes.
         and Path(path) not in APPROVED_HWPX_EXAMPLES
+        and Path(path) not in ARTIFACT_FORMAT_TEMPLATES
     )
     if forbidden_documents:
         errors.append(

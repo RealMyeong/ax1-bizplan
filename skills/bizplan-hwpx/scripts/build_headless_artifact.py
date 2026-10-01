@@ -31,6 +31,7 @@ import artifact_metadata as M  # noqa: E402
 import format_headless_artifact as A  # noqa: E402
 import check_headless_artifact as C  # noqa: E402
 import layout_headless_artifact as L  # noqa: E402
+import artifact_media as P  # noqa: E402
 
 # 제목 계층 (references/08-headless-format-rules.md 의 글자 크기 계층과 같아야 함)
 HEADING_HEIGHT = {1: 1500, 2: 1200, 3: 1050}
@@ -43,7 +44,7 @@ MIN_COL_WIDTH = 3000
 # 표 기본 속성 (한/글 [표 속성] 대화상자와 대응)
 #   글자처럼 취급   -> 기본 설정. 최종 열 폭/행 높이 계산 뒤 한 쪽 초과 표만 해제.
 #   쪽 경계에서     -> page_break      (긴 표에 적용되는 셀 단위 나눔 = CELL)
-#   제목 줄 자동 반복 -> repeat_header   (끔). 셀의 header 속성도 함께 0
+#   제목 줄 자동 반복 -> 최종 높이 계산 뒤 긴 표만 켬; 첫 행 모든 셀 header=1
 TABLE_TREAT_AS_CHAR = 1
 TABLE_PAGE_BREAK = "CELL"
 TABLE_REPEAT_HEADER = 0
@@ -58,7 +59,8 @@ def esc(s: str) -> str:
 
 
 def strip_inline(s: str) -> str:
-    s = re.sub(r"!\[[^\]]*\]\([^)]*\)", "", s)
+    if '![' in s or '[[그림' in s:
+        raise H.HeadlessHwpxError('그림은 독립된 문단에 작성해야 함; 본문·목록·표 셀의 그림을 삭제하지 않음')
     s = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", s)
     s = s.replace("**", "").replace("`", "")
     return s.strip()
@@ -98,6 +100,21 @@ def parse_markdown(text: str) -> list:
 
         if not stripped or re.fullmatch(r"-{3,}", stripped):
             flush()
+            i += 1
+            continue
+
+        picture = P.parse_picture(stripped)
+        if picture is not None:
+            flush()
+            blocks.append(('pic', picture))
+            if picture['caption']:
+                blocks.append(('caption', picture['caption']))
+            i += 1
+            continue
+
+        if H.CAPTION_RE.fullmatch(stripped):
+            flush()
+            blocks.append(('caption', stripped))
             i += 1
             continue
 
@@ -150,6 +167,12 @@ def parse_markdown(text: str) -> list:
         i += 1
 
     flush()
+    # Explicit table captions supplied above a table are moved below that table.
+    # No arbitrary prose is moved and no captions/numbers are invented.
+    for index in range(len(blocks) - 1):
+        if blocks[index][0] == 'caption' and blocks[index][1].startswith('[표 '):
+            if blocks[index + 1][0] == 'table' and (not index or blocks[index - 1][0] != 'table'):
+                blocks[index], blocks[index + 1] = blocks[index + 1], blocks[index]
     return blocks
 
 
@@ -371,6 +394,43 @@ class Emitter:
             first_horzpos=H.BODY_LIST_BULLET_POSITION,
             following_horzpos=left,
         )
+
+    def caption(self, text: str) -> str:
+        return self.para(text, self.pool.para_format(align='CENTER'),
+                         self.pool.char(H.BODY_TEXT_HEIGHT, False), H.BODY_TEXT_HEIGHT)
+
+    def picture(self, spec: dict) -> str:
+        width, height = spec['width'], spec['height']
+        dim_w, dim_h = (round(value * 75) for value in spec['pixels'])  # 96dpi → HWPUNIT
+        pic = (
+            f'<hp:pic id="{self._id()}" zOrder="0" numberingType="PICTURE" textWrap="SQUARE"'
+            f' textFlow="BOTH_SIDES" lock="0" dropcapstyle="None" href="" groupLevel="0"'
+            f' instid="{self._id()}" reverse="0">'
+            f'<hp:offset x="0" y="0"/><hp:orgSz width="{width}" height="{height}"/>'
+            '<hp:curSz width="0" height="0"/><hp:flip horizontal="0" vertical="0"/>'
+            f'<hp:rotationInfo angle="0" centerX="{width // 2}" centerY="{height // 2}" rotateimage="1"/>'
+            '<hp:renderingInfo>'
+            '<hc:transMatrix e1="1" e2="0" e3="0" e4="0" e5="1" e6="0"/>'
+            '<hc:scaMatrix e1="1" e2="0" e3="0" e4="0" e5="1" e6="0"/>'
+            '<hc:rotMatrix e1="1" e2="0" e3="0" e4="0" e5="1" e6="0"/>'
+            '</hp:renderingInfo>'
+            f'<hc:img binaryItemIDRef="{spec["item_id"]}" bright="0" contrast="0" effect="REAL_PIC" alpha="0"/>'
+            f'<hp:imgRect><hc:pt0 x="0" y="0"/><hc:pt1 x="{width}" y="0"/>'
+            f'<hc:pt2 x="{width}" y="{height}"/><hc:pt3 x="0" y="{height}"/></hp:imgRect>'
+            f'<hp:imgClip left="0" right="{dim_w}" top="0" bottom="{dim_h}"/>'
+            '<hp:inMargin left="0" right="0" top="0" bottom="0"/>'
+            f'<hp:imgDim dimwidth="{dim_w}" dimheight="{dim_h}"/><hp:effects/>'
+            f'<hp:sz width="{width}" widthRelTo="ABSOLUTE" height="{height}" heightRelTo="ABSOLUTE" protect="0"/>'
+            '<hp:pos treatAsChar="1" affectLSpacing="0" flowWithText="1" allowOverlap="0"'
+            ' holdAnchorAndSO="0" vertRelTo="PARA" horzRelTo="PARA" vertAlign="TOP"'
+            ' horzAlign="LEFT" vertOffset="0" horzOffset="0"/>'
+            '<hp:outMargin left="0" right="0" top="0" bottom="0"/>'
+            '<hp:shapeComment>본문 그림</hp:shapeComment></hp:pic>'
+        )
+        cache = L.line_cache([0], height, self.text_width, 600)
+        return (f'<hp:p id="{self._id()}" paraPrIDRef="{self.pool.center_para}" styleIDRef="0"'
+                f' pageBreak="0" columnBreak="0" merged="0"><hp:run charPrIDRef="{self.pool.char(1000, False)}">'
+                + pic + '</hp:run>' + cache + '</hp:p>')
 
     def table(self, rows: list, regular: H.Font, boldfont: H.Font) -> str:
         n_col = len(rows[0])
@@ -718,6 +778,11 @@ def build(
         styles,
     )
 
+    for block in blocks:
+        if block[0] == 'pic':
+            P.prepare(block[1], entries, content.resolve().parent,
+                      emitter.text_width, L.page_body_height(section))
+
     parts = []
 
     # 목차 항목 - 장 제목에서 뽑는다. 목차 제목 문단까지가 양식이고 항목부터가 생성물이다.
@@ -730,7 +795,7 @@ def build(
     previous_kind = None
     for block in blocks:
         if block[0] == "h":
-            add_top_spacing = block[1] in {2, 3} and previous_kind in {"p", "li", "ol", "table"}
+            add_top_spacing = block[1] in {2, 3} and previous_kind in {"p", "li", "ol", "table", "caption", "pic"}
             parts.append(emitter.heading(block[1], block[2], add_top_spacing))
         elif block[0] == "p":
             parts.append(emitter.body(block[1]))
@@ -740,6 +805,10 @@ def build(
             parts.append(emitter.item(1, block[2], prefix=block[1]))
         elif block[0] == "table":
             parts.append(emitter.table(block[1], regular, boldfont))
+        elif block[0] == 'pic':
+            parts.append(emitter.picture(block[1]))
+        elif block[0] == 'caption':
+            parts.append(emitter.caption(block[1]))
         previous_kind = block[0]
     log.append(f"본문·목록·표 뒤 수준 2~3 제목 윗간격 {H.HEADING_TOP_SPACING} HWPUNIT 적용")
     log.append(
@@ -780,7 +849,7 @@ def build(
     for block in blocks:
         if block[0] in {"h", "li", "ol"}:
             source_texts.append(block[2])
-        elif block[0] == "p":
+        elif block[0] in {"p", 'caption'}:
             source_texts.append(block[1])
         elif block[0] == "table":
             source_texts.extend(cell for row in block[1] for cell in row)

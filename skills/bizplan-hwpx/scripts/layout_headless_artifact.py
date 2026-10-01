@@ -114,10 +114,14 @@ def reflow_table(tbl: str, char_prs: dict, regular: H.Font, boldfont: H.Font) ->
 def describe(para: str, heading_styles: dict):
     if '<hp:tbl ' in para:
         return 'table', None
+    if '<hp:pic ' in para:
+        return 'picture', None
     level = next((i for i in (1, 2, 3) if attr(para, 'styleIDRef') == heading_styles.get(f'개요 {i}')), None)
     if level:
         return 'heading', level
     text = H.unescape(''.join(re.findall(r'<hp:t>([^<]*)</hp:t>', para)))
+    if H.CAPTION_RE.fullmatch(text):
+        return 'caption', None
     return ('list' if re.match(r'^(?:• |\d+\.\s)', text.lstrip()) else 'body'), None
 
 
@@ -143,8 +147,11 @@ def layout_plan(section: str, header: str):
             continue
         previous = plan[i - 1]
         table_edge = item['kind'] == 'table' or previous['kind'] == 'table'
-        heading_edge = item['level'] in {2, 3} and previous['kind'] in {'body', 'list', 'table'}
-        gap = H.TABLE_BOUNDARY_SPACING if table_edge else H.HEADING_TOP_SPACING if heading_edge else 0
+        heading_edge = item['level'] in {2, 3} and previous['kind'] in {'body', 'list', 'table', 'picture', 'caption'}
+        gap = (H.TABLE_BOUNDARY_SPACING if table_edge else H.HEADING_TOP_SPACING if heading_edge
+               else H.CAPTION_TOP_SPACING if item['kind'] == 'caption'
+               else H.CAPTION_AFTER_SPACING if previous['kind'] == 'caption'
+               else 600 if 'picture' in {item['kind'], previous['kind']} else 0)
         # Exactly one owner per edge. Floating objects use external margins,
         # as paragraph spacing alone does not reliably reserve their wrap area.
         if previous['floating']:
@@ -162,6 +169,7 @@ def normalize(section: str, header: str, pool, text_width: int) -> str:
     for item in reversed(plan):
         para = item['xml']
         pid = pool.variant(attr(para, 'paraPrIDRef'), H.BODY_LINE_SPACING,
+                           align='CENTER' if item['kind'] in {'picture', 'caption'} else None,
                            prev=item['prev'], next_spacing=0)
         para = set_attr(para, 'paraPrIDRef', pid)
         if item['table']:
@@ -170,6 +178,15 @@ def normalize(section: str, header: str, pool, text_width: int) -> str:
                 if any(int(h) > page_height for h in re.findall(r'<hp:cellSz\b[^>]*height="(\d+)"', row)):
                     raise H.HeadlessHwpxError('한 셀이 한 쪽 본문 높이를 초과함; 셀 단위 나눔으로 해결 불가. 내용을 분리해야 함')
             table = set_attr(table, 'pageBreak', 'CELL')
+            # A split table needs BOTH the table repeat switch and all cells
+            # of row zero marked as titles. The first column is not a title row.
+            table = set_attr(table, 'repeatHeader', int(item['floating']))
+            def title_cell(match):
+                cell = match[0]
+                address = re.search(r'<hp:cellAddr\b[^>]*/>', cell)
+                return set_attr(cell, 'header', int(item['floating'] and
+                                address is not None and attr(address[0], 'rowAddr') == '0'))
+            table = re.sub(r'<hp:tc\b.*?</hp:tc>', title_cell, table, flags=re.S)
             table = re.sub(r'<hp:pos\b[^>]*/>', lambda m: set_attr(set_attr(m[0], 'treatAsChar',
                               0 if item['floating'] else 1), 'affectLSpacing', 0), table, count=1)
             table = re.sub(r'<hp:outMargin\b[^>]*/>', lambda m: set_attr(set_attr(m[0],
@@ -182,6 +199,14 @@ def normalize(section: str, header: str, pool, text_width: int) -> str:
             spacing = round(H.BODY_TEXT_HEIGHT * (H.BODY_LINE_SPACING - 100) / 100)
             tail = tail.replace('</hp:p>', line_cache([0], cache_h, text_width, spacing) + '</hp:p>')
             para = head + '</hp:tbl>' + tail
+        if item['kind'] == 'picture':
+            pic = re.search(r'<hp:pic\b.*?</hp:pic>', para, re.S)[0]
+            size = re.search(r'<hp:sz\b[^>]*/>', pic)[0]
+            height = int(attr(size, 'height'))
+            head, tail = para.rsplit('</hp:pic>', 1)
+            tail = re.sub(r'<hp:linesegarray>.*?</hp:linesegarray>', '', tail, flags=re.S)
+            tail = tail.replace('</hp:p>', line_cache([0], height, text_width, 600) + '</hp:p>')
+            para = head + '</hp:pic>' + tail
         section = section[:item['start']] + para + section[item['end']:]
     return section
 
@@ -203,6 +228,13 @@ def check_layout(section: str, header: str):
         expected = '0' if item['floating'] else '1'
         if attr(pos, 'treatAsChar') != expected or attr(table, 'pageBreak') != 'CELL':
             issues.append(('표 배치', f"높이 {item['height']} 표는 treatAsChar={expected}, pageBreak=CELL이어야 함"))
+        if attr(table, 'repeatHeader') != str(int(item['floating'])):
+            issues.append(('표 제목행 반복', '한 쪽 초과 표는 repeatHeader=1, 짧은 표는 0이어야 함'))
+        for cell in re.findall(r'<hp:tc\b.*?</hp:tc>', table, re.S):
+            address = re.search(r'<hp:cellAddr\b[^>]*/>', cell)
+            is_title = item['floating'] and address is not None and attr(address[0], 'rowAddr') == '0'
+            if attr(cell, 'header') != str(int(is_title)):
+                issues.append(('표 제목행 반복', '긴 표의 첫 행 전체만 header=1이어야 함 (첫 열 전체가 아님)'))
         if any(attr(pos, key) != value for key, value in {
             'affectLSpacing': '0', 'flowWithText': '1', 'allowOverlap': '0',
             'vertRelTo': 'PARA', 'horzRelTo': 'COLUMN', 'vertOffset': '0', 'horzOffset': '0',

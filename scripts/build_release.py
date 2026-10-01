@@ -575,6 +575,7 @@ def validate_headless_scripts_are_stdlib_only() -> None:
         script_root / "check_headless_artifact.py",
         script_root / "build_headless_artifact.py",
         script_root / "artifact_metadata.py",
+        script_root / "artifact_media.py",
     ]
     local_modules = {path.stem for path in paths}
     allowed = set(sys.stdlib_module_names) | local_modules
@@ -714,7 +715,7 @@ def validate_approved_hwpx_asset() -> None:
 
 
 def validate_headless_acceptance() -> None:
-    for test in ("headless_hwpx_acceptance_test.py", "headless_table_layout_test.py", "hwpx_metadata_test.py"):
+    for test in ("headless_hwpx_acceptance_test.py", "headless_table_layout_test.py", "hwpx_metadata_test.py", "headless_media_test.py"):
         result = subprocess.run(
             [sys.executable, str(ROOT / "scripts" / test)],
             cwd=ROOT,
@@ -847,6 +848,7 @@ def validate_packaged_hwpx_skill(version: str) -> None:
         "bizplan-hwpx/scripts/check_headless_artifact.py",
         "bizplan-hwpx/scripts/layout_headless_artifact.py",
         "bizplan-hwpx/scripts/artifact_metadata.py",
+        "bizplan-hwpx/scripts/artifact_media.py",
         "bizplan-hwpx/scripts/Test-HwpxAccess.ps1",
         "bizplan-hwpx/references/14-general-artifact-content-quality.md",
         "bizplan-hwpx/references/15-document-control.md",

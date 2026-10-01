@@ -34,6 +34,9 @@ HEADING_PREFIX_SPACES = {1: 0, 2: 3, 3: 5}
 # 수준 2~3 제목은 본문·목록·표 뒤에서만 12pt 윗간격을 사용한다.
 HEADING_TOP_SPACING = 1200
 TABLE_BOUNDARY_SPACING = 1200  # 표↔본문·목록·제목·표 경계: 중복 없이 한 번만 12pt
+CAPTION_TOP_SPACING = 300  # 그림→캡션; 표→캡션은 기존 표 경계 12pt가 우선
+CAPTION_AFTER_SPACING = 1000
+CAPTION_RE = re.compile(r'^\[(표|그림) ([1-9]\d*)-([1-9]\d*)\]\s+(.+)$')
 TABLE_AXIS_HORIZONTAL_ALIGN = "CENTER"
 TABLE_AXIS_VERTICAL_ALIGN = "CENTER"
 TABLE_BODY_HORIZONTAL_ALIGN = "LEFT"

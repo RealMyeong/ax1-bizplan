@@ -71,6 +71,28 @@ class LayoutTests(unittest.TestCase):
             self.assertEqual(table.find('hp:pos', NS).get('treatAsChar'), '0' if long else '1')
             self.assertEqual(table.get('pageBreak'), 'CELL')
 
+    def test_long_tables_repeat_every_first_row_cell_only(self):
+        tables = [p.find('hp:run/hp:tbl', NS) for p in self.paras]
+        long = next(t for t in tables if t is not None and int(t.get('rowCnt')) > 50)
+        self.assertEqual(long.get('repeatHeader'), '1')
+        for cell in long.findall('hp:tr/hp:tc', NS):
+            row = cell.find('hp:cellAddr', NS).get('rowAddr')
+            self.assertEqual(cell.get('header'), '1' if row == '0' else '0')
+
+    def modify_long_table(self, section, transform):
+        start, end = next((s, e) for s, e in H.table_spans(section)
+                          if s >= H.body_start_offset(section)
+                          and int(L.attr(section[s:e], 'rowCnt')) > 50)
+        return section[:start] + transform(section[start:end]) + section[end:]
+
+    def test_checker_rejects_missing_long_table_repeat(self):
+        self.assert_corruption(lambda s: self.modify_long_table(s, lambda t:
+                               L.set_attr(t, 'repeatHeader', 0)), '표 제목행 반복')
+
+    def test_checker_rejects_missing_first_row_title_cell(self):
+        self.assert_corruption(lambda s: self.modify_long_table(s, lambda t:
+                               t.replace('header="1"', 'header="0"', 1)), '표 제목행 반복')
+
     def test_table_to_body_and_body_to_table_gap(self):
         previous = None
         for p in self.paras:
@@ -113,7 +135,7 @@ class LayoutTests(unittest.TestCase):
         entries = H.read_hwpx(self.output)
         section = H.get_text(entries, H.SECTION)
         changed = transform(section)
-        self.assertNotEqual(changed, section)
+        self.assertTrue(changed != section, '변형이 원본을 변경하지 않음')
         H.set_text(entries, H.SECTION, changed)
         target = self.directory / 'DXS-AX-TST-오류검증-20260907-v0.1.hwpx'
         H.write_hwpx(entries, target)

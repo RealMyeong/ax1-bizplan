@@ -19,6 +19,7 @@ sys.dont_write_bytecode = True
 
 import headless_hwpx as H  # noqa: E402
 import layout_headless_artifact as L  # noqa: E402
+import artifact_media as P  # noqa: E402
 
 # 한/글은 셀 안에서 글자를 조금 압축해 넣으므로 실제 글자 폭이 줄 용량을 다소 넘어도
 # 정상이다. 한/글이 직접 배치한 문서를 재어 정한 값이다.
@@ -331,6 +332,50 @@ def check(path: Path) -> list:
     if body_start:
         for rule, detail in L.check_layout(section, header):
             add(rule, detail)
+        for rule, detail in P.check_resources(entries, section):
+            add(rule, detail)
+        seen, last_numbers = set(), {}
+        for index, item in enumerate(boundary_plan):
+            if item['kind'] == 'caption':
+                text = H.unescape(''.join(H.re.findall(r'<hp:t>([^<]*)</hp:t>', item['xml'])))
+                match = H.CAPTION_RE.fullmatch(text)
+                kind, chapter, number = match[1], int(match[2]), int(match[3])
+                key = (kind, chapter, number)
+                previous = boundary_plan[index - 1] if index else None
+                expected = 'table' if kind == '표' else 'picture'
+                if previous is None or previous['kind'] != expected:
+                    add('캡션 위치', '캡션은 해당 표·그림 바로 아래에 한 번만 작성해야 함')
+                if key in seen or number != last_numbers.get((kind, chapter), 0) + 1:
+                    add('캡션 번호', f'{kind} {chapter}-{number}: 중복 또는 연속 순번이 아님; 자동 재번호하지 않음')
+                seen.add(key)
+                last_numbers[(kind, chapter)] = number
+                pid = L.attr(item['xml'], 'paraPrIDRef')
+                cids = H.re.findall(r'<hp:run charPrIDRef="(\d+)"', item['xml'])
+                if para_prs.get(pid, {}).get('align') != 'CENTER' or any(
+                    cid not in char_prs or char_prs[cid].height != 1000 or char_prs[cid].bold for cid in cids):
+                    add('캡션 서식', '캡션은 가운데 정렬·10pt·보통 굵기여야 함')
+            elif item['kind'] == 'picture':
+                pic = H.re.search(r'<hp:pic\b.*?</hp:pic>', item['xml'], H.re.S)[0]
+                size = H.re.search(r'<hp:sz\b[^>]*/>', pic)[0]
+                if len(H.re.findall(r'<hc:img\b[^>]*binaryItemIDRef="[^"]+"', pic)) != 1:
+                    add('그림 리소스', '그림 개체는 실제 이미지 참조가 정확히 하나 있어야 함')
+                width, height = int(L.attr(size, 'width')), int(L.attr(size, 'height'))
+                pos = H.re.search(r'<hp:pos\b[^>]*/>', pic)[0]
+                cache = item['xml'].rsplit('</hp:pic>', 1)[1]
+                seg = H.re.search(r'<hp:lineseg\b[^>]*/>', cache)
+                if not 0 < width <= text_width or not 0 < height <= L.page_body_height(section):
+                    add('그림 배치', '그림 표시 크기가 본문 폭·쪽 높이 범위를 벗어남')
+                if L.attr(pos, 'treatAsChar') != '1' or para_prs.get(L.attr(item['xml'], 'paraPrIDRef'), {}).get('align') != 'CENTER':
+                    add('그림 배치', '그림은 글자처럼 취급·가운데 정렬이어야 함')
+                if not seg or L.attr(seg[0], 'vertsize') != str(height) or L.attr(seg[0], 'spacing') != '600':
+                    add('그림 줄 배치', '그림 높이와 lineseg 캐시가 불일치함')
+        for item in boundary_plan:
+            if item['kind'] in {'picture', 'caption'}:
+                continue
+            text = H.unescape(''.join(H.re.findall(r'<hp:t>([^<]*)</hp:t>', item['xml'])))
+            for match in H.re.finditer(r'\[(표|그림) ([1-9]\d*)-([1-9]\d*)\]', text):
+                if (match[1], int(match[2]), int(match[3])) not in seen:
+                    add('캡션 참조', f'{match[0]}에 대응하는 캡션 없음')
 
     # 4. 글자 크기 - 본문 구간
     used_heights = {}

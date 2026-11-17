@@ -377,6 +377,11 @@ def check(path: Path) -> list:
                 if (match[1], int(match[2]), int(match[3])) not in seen:
                     add('캡션 참조', f'{match[0]}에 대응하는 캡션 없음')
 
+    # 3-2. 목차(한/글 차례 구조)와 본문 쪽 번호
+    if body_start:
+        for rule, detail in check_toc(section, header, body_start, char_prs):
+            add(rule, detail)
+
     # 4. 글자 크기 - 본문 구간
     used_heights = {}
     for offset, _, body in H.paragraphs(section):
@@ -497,6 +502,60 @@ def check(path: Path) -> list:
                         f"표 {tno} r{c.row}c{c.col}",
                     )
                     break
+    return issues
+
+
+def body_headings(section: str, header: str, body_start: int) -> list:
+    """본문 제목 문단의 (수준, 앞 공백을 뺀 제목, 문단 id, 문단 XML) 목록."""
+    styles = H.style_ids_by_name(header)
+    level_by_style = {styles.get(f"개요 {i}"): i for i in (1, 2, 3)}
+    out = []
+    for start, _, para in L.top_paragraphs(section):
+        if start < body_start:
+            continue
+        level = level_by_style.get(L.attr(para, "styleIDRef"))
+        if level:
+            text = H.unescape("".join(H.re.findall(r"<hp:t>([^<]*)</hp:t>", para))).strip()
+            out.append((level, text, L.attr(para, "id"), para))
+    return out
+
+
+def check_toc(section: str, header: str, body_start: int, char_prs: dict) -> list:
+    """목차 항목의 차례 구조·제목 일치·글자 크기·링크·쪽 번호와 본문 쪽 번호를 검사한다.
+
+    --no-toc 로 목차 항목을 만들지 않은 문서(목차 제목 뒤 바로 1장)는 목차 검사를 건너뛴다.
+    """
+    issues = []
+    headings = body_headings(section, header, body_start)
+    if not headings:
+        return issues
+    first_heading = section.find(headings[0][3], body_start)
+    between = section[body_start:first_heading]
+    toc = H.toc_entries(section)
+    region = H.toc_region(section)
+    has_toc_items = bool(H.re.search(r"<hp:t>[^<]", between)) or bool(region)
+    if has_toc_items:
+        if not region or not (body_start <= region[0] < first_heading):
+            issues.append(("목차", "목차 항목이 한/글 차례 필드(TABLEOFCONTENTS)로 감싸여 있지 않음"))
+        else:
+            expected = [(level, text, pid) for level, text, pid, _ in headings if level in H.TOC_LEVELS]
+            if [(t, title) for t, title, _, _ in toc] != [(pid, text) for _, text, pid in expected]:
+                issues.append(("목차", "목차 항목이 본문 장·절 제목·순서와 다르거나 제목 문단으로 연결되지 않음"))
+            for (target, title, page, cid), (level, _, _) in zip(toc, expected):
+                cp = char_prs.get(cid)
+                if not cp or cp.height != H.TOC_HEIGHT[level] or cp.bold != (level == 1):
+                    want = f"{H.TOC_HEIGHT[level] / 100:g}pt" + (" 굵게" if level == 1 else "")
+                    issues.append(("목차", f"{'장' if level == 1 else '절'} 항목 글자가 규칙({want})과 다름 :: {title[:24]}"))
+                if not page.strip().isdigit() or int(page) < 1:
+                    issues.append(("목차", f"쪽 번호가 비었거나 1보다 작음 ({page!r}) :: {title[:24]}"))
+            pages = [int(page) for _, _, page, _ in toc if page.strip().isdigit()]
+            if pages != sorted(pages):
+                issues.append(("목차", "목차 쪽 번호가 제목 순서대로 늘어나지 않음"))
+    first = headings[0]
+    if first[0] != 1 or "<hp:pageNum " not in first[3] or '<hp:newNum num="1" numType="PAGE"/>' not in first[3]:
+        issues.append(("쪽 번호", "본문 1장 제목에 쪽 번호(아래 가운데)와 새 번호 1이 없음"))
+    if "<hp:pageNum " in section[:body_start] or section.count("<hp:pageNum ") != 1:
+        issues.append(("쪽 번호", "쪽 번호 컨트롤은 본문 1장 제목에 한 번만 있어야 함 (표지·목차는 번호 없음)"))
     return issues
 
 

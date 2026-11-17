@@ -48,7 +48,7 @@ BODY_LIST_BULLET_POSITION = BODY_LIST_LEFT_INDENT + BODY_LIST_FIRST_LINE_INDENT
 # 줄바꿈 계산 여유. 한/글의 줄나눔을 정확히 재현할 수 없으므로 조금 좁게 잡아
 # 줄 수를 적게 세지 않도록 한다. 적게 세면 그만큼 글자가 겹친다.
 WRAP_SAFETY = 0.97
-ALLOWED_HEIGHTS = (1000, 1050, 1200, 1500)  # 본문 10 / 항 10.5 / 절 12 / 장 15
+ALLOWED_HEIGHTS = (1000, 1050, 1200, 1400, 1500)  # 본문 10 / 항 10.5 / 절·목차 절 12 / 목차 장 14 / 장 15
 
 MALGUN = Path(r"C:\Windows\Fonts\malgun.ttf")
 MALGUN_BOLD = Path(r"C:\Windows\Fonts\malgunbd.ttf")
@@ -1157,3 +1157,165 @@ def longest_word_width(text: str, height: int, bold: bool, regular: Font, boldfo
         if w > best:
             best, word = w, token
     return best, word
+
+
+# --- 목차(한/글 차례 구조)·본문 쪽 번호 -----------------------------------------
+# 한/글 「차례 만들기」가 저장하는 구조를 따른다.
+#   - 목차 항목 전체를 TABLEOFCONTENTS 필드로 감싼다 -> 한/글에서 「차례 새로 고침」 가능
+#   - 항목마다 HYPERLINK 필드(대상 = 제목 문단 id) + 제목 + 오른쪽 점선 탭 + 쪽 번호
+# 한/글은 문서를 열거나 PDF 로 바꿀 때 차례 쪽 번호를 저절로 채우지 않는다. 경량 생성기는
+# 줄 배치·표 높이로 추정한 값을 넣고, 실제 쪽은 한컴에서 확인한다(선택 도구 toc_pages_hwp.py).
+
+TOC_LEVELS = (1, 2)  # 장·절만 목차에 넣는다
+TOC_INDENT = 1000  # 절 항목 왼쪽 들여쓰기
+TOC_STYLE = {1: "차례 1", 2: "차례 2"}
+TOC_HEIGHT = {1: 1400, 2: 1200}  # 장 14pt 굵게, 절 12pt
+TOC_LEADER = "3"  # hp:tab leader. 3 = 점선
+TOC_FIELD_ID = 2099999999
+TOC_LINK_ID0 = 2100000000
+TOC_PARA_ID0 = 1300000000
+TOC_COMMAND = ("TableOfContents:set:140:ContentsMake:uint:17 ContentsStyles:wstring:0: ContentsLevel:int:2 "
+               "ContentsAutoTabRight:int:0 ContentsLeader:int:3 ContentsHyperlink:bool:1  ")
+
+# 본문 쪽 번호: 1장 제목에서 새 번호 1로 시작, 아래 가운데 "- 1 -". 표지·목차에는 번호 없음.
+PAGE_NUM_CTRL = ('<hp:ctrl><hp:pageNum pos="BOTTOM_CENTER" formatType="DIGIT" sideChar="-"/></hp:ctrl>'
+                 '<hp:ctrl><hp:newNum num="1" numType="PAGE"/></hp:ctrl>')
+
+
+def ensure_toc_tab(header: str, width: int):
+    """오른쪽 정렬·점선 채움 탭(위치 = 본문 폭)을 확보한다. (header, tabPr id)."""
+    for m in re.finditer(r'<hh:tabPr id="(\d+)"[^>/]*>(.*?)</hh:tabPr>', header, re.S):
+        if f'pos="{width}" type="RIGHT" leader="DOT"' in m.group(2):
+            return header, m.group(1)
+    count = re.search(r'<hh:tabProperties itemCnt="(\d+)">', header)
+    if not count:
+        raise HeadlessHwpxError("템플릿에 탭 정의 목록이 없어 목차 점선 탭을 만들 수 없음")
+    ids = [int(i) for i in re.findall(r'<hh:tabPr id="(\d+)"', header)]
+    new_id = str(max(ids, default=-1) + 1)
+    block = (f'<hh:tabPr id="{new_id}" autoTabLeft="0" autoTabRight="0"><hp:switch>'
+             '<hp:case hp:required-namespace="http://www.hancom.co.kr/hwpml/2016/HwpUnitChar">'
+             f'<hh:tabItem pos="{width}" type="RIGHT" leader="DOT" unit="HWPUNIT"/></hp:case>'
+             f'<hp:default><hh:tabItem pos="{width * 2}" type="RIGHT" leader="DOT"/></hp:default>'
+             '</hp:switch></hh:tabPr>')
+    header = header.replace(count.group(0), f'<hh:tabProperties itemCnt="{int(count.group(1)) + 1}">', 1)
+    header = header.replace("</hh:tabProperties>", block + "</hh:tabProperties>", 1)
+    return header, new_id
+
+
+def toc_tab_width(text: str, page: str, level: int, avail: int, regular: Font, boldfont: Font) -> int:
+    """제목과 쪽 번호 사이 점선 탭의 폭."""
+    height, bold = TOC_HEIGHT[level], level == 1
+    title_w, _ = text_width(text, height, bold, regular, boldfont)
+    page_w, _ = text_width(page, height, bold, regular, boldfont)
+    return max(0, int(avail - title_w - page_w))
+
+
+def toc_paragraph(k: int, para_id: str, style_id: str, char_id: str, level: int, text: str,
+                  target_id: str, page: str, avail: int, regular: Font, boldfont: Font,
+                  first: bool, last: bool) -> str:
+    """목차 항목 문단 하나. avail = 이 문단의 글 폭(본문 폭 - 왼쪽 들여쓰기)."""
+    height = TOC_HEIGHT[level]
+    tab_w = toc_tab_width(text, page, level, avail, regular, boldfont)
+    link = TOC_LINK_ID0 + k
+
+    def run(inner: str) -> str:
+        return f'<hp:run charPrIDRef="{char_id}">{inner}</hp:run>'
+
+    parts = []
+    if first:
+        parts.append(run(
+            f'<hp:ctrl><hp:fieldBegin id="{TOC_FIELD_ID}" type="TABLEOFCONTENTS" name="" editable="1" dirty="0"'
+            f' zorder="-1" fieldid="{TOC_FIELD_ID}" metaTag=""><hp:parameters cnt="2" name="">'
+            '<hp:integerParam name="Prop">8</hp:integerParam>'
+            f'<hp:stringParam name="Command" xml:space="preserve">{TOC_COMMAND}</hp:stringParam>'
+            '</hp:parameters></hp:fieldBegin></hp:ctrl>'))
+    parts.append(run(
+        f'<hp:ctrl><hp:fieldBegin id="{link}" type="HYPERLINK" name="" editable="0" dirty="1" zorder="-1"'
+        f' fieldid="{link}" metaTag=""><hp:parameters cnt="5" name="">'
+        '<hp:integerParam name="Prop">0</hp:integerParam>'
+        f'<hp:stringParam name="Command">?#{target_id};0;1;0;</hp:stringParam>'
+        '<hp:stringParam name="Category">HWPHYPERLINK_TYPE_HWP</hp:stringParam>'
+        '<hp:stringParam name="TargetType">HWPHYPERLINK_TARGET_OUTLINE</hp:stringParam>'
+        '<hp:stringParam name="DocOpenType">HWPHYPERLINK_JUMP_CURRENTTAB</hp:stringParam>'
+        '</hp:parameters></hp:fieldBegin></hp:ctrl>'))
+    # 제목과 (점선 탭 + 쪽 번호)를 서로 다른 hp:t 에 둔다. 제목 글자를 다른 검사가 그대로 읽을 수 있다
+    parts.append(run(f'<hp:t>{escape_xml_text(text)}</hp:t>'
+                     f'<hp:t><hp:tab width="{tab_w}" leader="{TOC_LEADER}" type="2"/>{escape_xml_text(page)}</hp:t>'))
+    parts.append(run(f'<hp:ctrl><hp:fieldEnd beginIDRef="{link}" fieldid="{link}"/></hp:ctrl>'))
+    if last:
+        parts.append(run(f'<hp:ctrl><hp:fieldEnd beginIDRef="{TOC_FIELD_ID}" fieldid="{TOC_FIELD_ID}"/></hp:ctrl>'))
+    spacing = round(height * (BODY_LINE_SPACING - 100) / 100)
+    cache = (f'<hp:linesegarray><hp:lineseg textpos="0" vertpos="0" vertsize="{height}" textheight="{height}"'
+             f' baseline="{round(height * 0.85)}" spacing="{spacing}" horzpos="0" horzsize="{avail}"'
+             ' flags="393216"/></hp:linesegarray>')
+    return (f'<hp:p id="{TOC_PARA_ID0 + k}" paraPrIDRef="{para_id}" styleIDRef="{style_id}"'
+            f' pageBreak="0" columnBreak="0" merged="0">{"".join(parts)}{cache}</hp:p>')
+
+
+TOC_ENTRY_RE = re.compile(
+    r'(\?#(\d+);0;1;0;(?:(?!<hp:fieldEnd).)*?<hp:run charPrIDRef="(\d+)"><hp:t>)([^<]*)'
+    r'</hp:t><hp:t><hp:tab width="(\d+)" leader="\d+" type="2"/>([^<]*)(</hp:t>)', re.S)
+
+
+def toc_region(section: str):
+    """목차 차례 필드 구간 (시작, 끝). 없으면 None."""
+    start = section.find(f'id="{TOC_FIELD_ID}" type="TABLEOFCONTENTS"')
+    if start < 0:
+        return None
+    end = section.find(f'<hp:fieldEnd beginIDRef="{TOC_FIELD_ID}"', start)
+    return (start, end) if end > start else None
+
+
+def toc_entries(section: str) -> list:
+    """목차 항목의 (대상 제목 문단 id, 제목, 쪽 번호 글자, 글자모양 id) 목록."""
+    span = toc_region(section)
+    if not span:
+        return []
+    region = section[span[0]:span[1]]
+    return [(m.group(2), unescape(m.group(4)), m.group(6), m.group(3)) for m in TOC_ENTRY_RE.finditer(region)]
+
+
+def set_toc_pages(section: str, pages: dict, char_prs: dict, regular: Font, boldfont: Font) -> tuple:
+    """목차 쪽 번호를 pages(제목 문단 id -> 쪽)로 바꾸고 점선 탭 폭을 다시 맞춘다. (section, 바뀐 수)."""
+    span = toc_region(section)
+    if not span:
+        return section, 0
+    start, end = span
+    region = section[start:end]
+    changed = 0
+
+    def fix(match):
+        nonlocal changed
+        target, cid, title = match.group(2), match.group(3), match.group(4)
+        if target not in pages:
+            return match.group(0)
+        page = str(pages[target])
+        cp = char_prs.get(cid)
+        para_end = region.find("</hp:p>", match.end())
+        size = re.search(r'horzsize="(\d+)"', region[match.end():para_end])
+        if cp and size:
+            level = 1 if cp.bold else 2
+            tab_w = toc_tab_width(unescape(title), page, level, int(size.group(1)), regular, boldfont)
+        else:
+            tab_w = int(match.group(5))
+        if page != match.group(6):
+            changed += 1
+        return (f'{match.group(1)}{title}</hp:t><hp:t><hp:tab width="{tab_w}" leader="{TOC_LEADER}" type="2"/>'
+                f'{page}{match.group(7)}')
+
+    region = TOC_ENTRY_RE.sub(fix, region)
+    return section[:start] + region + section[end:], changed
+
+
+def add_page_numbering(paragraph: str) -> str:
+    """제목 문단 첫 run 앞머리에 쪽 번호(아래 가운데)·새 번호 1 컨트롤을 넣는다.
+
+    컨트롤은 제목 글자와 같은 run 안에 둔다. 따로 run 을 만들면 첫 run 의 글이 비어
+    제목 판정·readback 이 어긋난다.
+    """
+    if "<hp:pageNum " in paragraph:
+        return paragraph
+    match = re.search(r'<hp:run charPrIDRef="\d+">', paragraph)
+    if not match:
+        raise HeadlessHwpxError("쪽 번호를 넣을 1장 제목의 글자 run 을 찾지 못함")
+    return paragraph[:match.end()] + PAGE_NUM_CTRL + paragraph[match.end():]

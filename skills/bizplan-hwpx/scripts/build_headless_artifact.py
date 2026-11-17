@@ -3,7 +3,8 @@
     python build_headless_artifact.py --content <본문.md> -o <DXS-사업코드-문서유형-파일제목-YYYYMMDD-v0.1.hwpx> [표지 정보]
 
 양식의 표지~목차 제목은 손대지 않고 그 뒤에 목차 항목과 본문을 이어붙인 뒤,
-서식 규칙을 적용한다. 마크다운 앞부분의 표지·문서정보·개정이력·목차는 양식이
+서식 규칙을 적용한다. 목차는 한/글 차례 구조(차례 필드 + 제목 하이퍼링크 + 오른쪽
+점선 탭 + 추정 쪽 번호)로 장·절을 넣고, 1장 제목부터 본문 쪽 번호를 1로 시작한다. 마크다운 앞부분의 표지·문서정보·개정이력·목차는 양식이
 이미 갖고 있으므로 건너뛴다.
 
 지원하는 마크다운
@@ -245,6 +246,7 @@ class StylePool:
         intent: int = 0,
         prev: int = 0,
         align: str | None = None,
+        tab: str | None = None,
     ) -> str:
         """Return a paragraph style with canonical HwpUnitChar margin values.
 
@@ -275,6 +277,8 @@ class StylePool:
                 lambda match: match.group(1) + align + match.group(2),
                 block,
             )
+        if tab is not None:
+            block = re.sub(r'tabPrIDRef="\d+"', f'tabPrIDRef="{tab}"', block, count=1)
         want = self._strip(block, "paraPr")
         for pid, existing in self.paras.items():
             if self._strip(existing, "paraPr") == want:
@@ -394,6 +398,26 @@ class Emitter:
             first_horzpos=H.BODY_LIST_BULLET_POSITION,
             following_horzpos=left,
         )
+
+    def toc(self, headings: list) -> list:
+        """목차 항목 문단 목록. headings = [(수준, 제목, 제목 문단 id)], 수준 1·2만.
+
+        쪽 번호는 자리값 1로 만들고 서식 적용 뒤 fill_toc_pages 가 추정값으로 바꾼다.
+        """
+        self.pool.header, tab_id = H.ensure_toc_tab(self.pool.header, self.text_width)
+        entries = [h for h in headings if h[0] in H.TOC_LEVELS]
+        out = []
+        for k, (level, text, target) in enumerate(entries):
+            left = 0 if level == 1 else H.TOC_INDENT
+            out.append(H.toc_paragraph(
+                k,
+                self.pool.para_format(left=left, tab=tab_id),
+                self.styles.get(H.TOC_STYLE[level], "0"),
+                self.pool.char(H.TOC_HEIGHT[level], level == 1),
+                level, text, target, "1", self.text_width - left,
+                self.regular, self.boldfont, k == 0, k == len(entries) - 1,
+            ))
+        return out
 
     def caption(self, text: str) -> str:
         return self.para(text, self.pool.para_format(align='CENTER'),
@@ -717,6 +741,26 @@ def record_initial_revision(
     return section[:start] + table + section[end:]
 
 
+def fill_toc_pages(path: Path) -> str:
+    """서식 적용이 끝난 파일의 목차 쪽 번호를 줄 배치·표 높이 추정값으로 채운다."""
+    entries = H.read_hwpx(path)
+    header = H.get_text(entries, H.HEADER)
+    section = H.get_text(entries, H.SECTION)
+    toc = H.toc_entries(section)
+    if not toc:
+        raise H.HeadlessHwpxError("목차 차례 필드를 찾지 못해 쪽 번호를 채울 수 없음")
+    pages = L.estimate_pages(section, header, toc[0][0])
+    missing = [title for target, title, _, _ in toc if target not in pages]
+    if missing:
+        raise H.HeadlessHwpxError("목차 항목의 제목 문단을 찾지 못함: " + ", ".join(missing[:5]))
+    regular, boldfont = H.Font(H.MALGUN), H.Font(H.MALGUN_BOLD)
+    section, _ = H.set_toc_pages(section, pages, H.parse_char_prs(header), regular, boldfont)
+    H.set_text(entries, H.SECTION, section)
+    H.write_hwpx(entries, path)
+    return (f"목차 쪽 번호 추정값 기입: {len(toc)}개 항목 (1장 = 1쪽). "
+            "한컴 실제 쪽은 한컴에서 확인하거나 선택 도구 toc_pages_hwp.py 로 맞춤")
+
+
 def build(
     template: Path,
     content: Path,
@@ -784,19 +828,18 @@ def build(
                       emitter.text_width, L.page_body_height(section))
 
     parts = []
-
-    # 목차 항목 - 장 제목에서 뽑는다. 목차 제목 문단까지가 양식이고 항목부터가 생성물이다.
-    if make_toc:
-        chapters = [b[2] for b in blocks if b[0] == "h" and b[1] == 1]
-        for name in chapters:
-            parts.append(emitter.body(name))
-        log.append(f"목차 항목 {len(chapters)}개 생성")
+    headings = []  # (수준, 목차 글자, 제목 문단 id)
 
     previous_kind = None
     for block in blocks:
         if block[0] == "h":
             add_top_spacing = block[1] in {2, 3} and previous_kind in {"p", "li", "ol", "table", "caption", "pic"}
-            parts.append(emitter.heading(block[1], block[2], add_top_spacing))
+            heading = emitter.heading(block[1], block[2], add_top_spacing)
+            if block[1] == 1 and not any(h[0] == 1 for h in headings):
+                # 본문 쪽 번호: 1장 제목에서 새 번호 1, 아래 가운데. 표지·목차에는 번호 없음
+                heading = H.add_page_numbering(heading)
+            headings.append((block[1], block[2].strip(), re.match(r'<hp:p id="(\d+)"', heading).group(1)))
+            parts.append(heading)
         elif block[0] == "p":
             parts.append(emitter.body(block[1]))
         elif block[0] == "li":
@@ -810,6 +853,13 @@ def build(
         elif block[0] == 'caption':
             parts.append(emitter.caption(block[1]))
         previous_kind = block[0]
+    log.append("본문 쪽 번호: 1장 제목에서 새 번호 1로 시작 (아래 가운데)")
+
+    # 목차 항목 - 장·절 제목에서 뽑는다. 목차 제목 문단까지가 양식이고 항목부터가 생성물이다.
+    if make_toc:
+        toc_parts = emitter.toc(headings)
+        parts = toc_parts + parts
+        log.append(f"목차 항목 {len(toc_parts)}개 생성 (한/글 차례 구조: 차례 필드·제목 링크·점선 탭·쪽 번호)")
     log.append(f"본문·목록·표 뒤 수준 2~3 제목 윗간격 {H.HEADING_TOP_SPACING} HWPUNIT 적용")
     log.append(
         "본문 목록 hanging indent 적용: "
@@ -882,6 +932,8 @@ def build(
         log.append("승인 양식 뒤에 본문 삽입 완료")
         log.append("--- 경량 서식 적용 ---")
         log += A.apply(raw_path, fmt_path)
+        if make_toc:
+            log.append(fill_toc_pages(fmt_path))
         issues = C.check(fmt_path)
         if issues:
             summary = "; ".join(f"{item['rule']}: {item['detail']}" for item in issues[:8])

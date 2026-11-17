@@ -923,6 +923,13 @@ def validate_packaged_hwpx_skill(version: str) -> None:
                 raise ValueError("individual HWPX skill ZIP check failed:\n" + check.stdout + check.stderr)
             with zipfile.ZipFile(output) as generated:
                 readback = generated.read("Contents/section0.xml").decode("utf-8")
+                header_readback = generated.read("Contents/header.xml").decode("utf-8")
+            # 본문 글머리표는 글자가 아니라 한/글 글머리표 정의와 「글머리표 1」 스타일로 남아야 한다
+            for token in ('<hh:bullet ', 'char="•"', 'name="글머리표 1"'):
+                if token not in header_readback:
+                    raise ValueError(f"individual HWPX skill ZIP header readback missing: {token}")
+            if "<hp:t>• " in readback:
+                raise ValueError("individual HWPX skill ZIP readback has a typed bullet character")
             for token in (
                 "데이터 수집 정의서",
                 "정의서",
@@ -930,8 +937,8 @@ def validate_packaged_hwpx_skill(version: str) -> None:
                 "v0.1",
                 "최초 작성",
                 "테스트 작성자",
-                "• 검증 기준",
-                "• ☑ 한글 산출물 검증",
+                "검증 기준",
+                "☑ 한글 산출물 검증",
                 "구분",
                 "정상",
             ):

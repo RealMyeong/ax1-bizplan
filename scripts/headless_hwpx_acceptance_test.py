@@ -266,9 +266,9 @@ def main() -> int:
             "   1.3 표 뒤 제목",
             "     1.3.1 연속 제목",
             "2. 새 쪽 제목",
-            "• 사수준 제목",
-            "• 본문 목록으로 전환할 항목",
-            "• 표준 라이브러리만 사용",
+            "사수준 제목",
+            "본문 목록으로 전환할 항목",
+            "표준 라이브러리만 사용",
         ):
             if expected not in paragraph_texts:
                 raise AssertionError(f"개요 수준 앞 공백 보존 실패: {expected!r}")
@@ -296,16 +296,36 @@ def main() -> int:
         if 'pageBreak="1"' not in new_page["attrs"] or para_prs[new_page_pid]["prev"] != 0:
             raise AssertionError("수준 1 새 쪽 시작 동작 또는 위 간격이 변경됨")
 
-        list_paragraphs = [paragraph for paragraph in top_level if paragraph["text"].startswith("• ")]
-        if len(list_paragraphs) < 5:
-            raise AssertionError("합성 목록 문단을 모두 찾지 못함")
+        # 본문 글머리표는 한/글 글머리표 기능: header 정의 + 「글머리표 1」 스타일, 글에는 기호 없음
+        bullet_paras = H.bullet_para_ids(header)
+        bullet_defs = H.bullet_chars(header)
+        if H.BODY_LIST_BULLET_CHAR not in bullet_defs.values():
+            raise AssertionError("header 에 본문 글머리표 정의(hh:bullet)가 없음")
+        bullet_style = heading_styles.get(H.BODY_LIST_BULLET_STYLE)
+        if bullet_style is None:
+            raise AssertionError(f"「{H.BODY_LIST_BULLET_STYLE}」 스타일이 없음")
+        list_paragraphs = [
+            paragraph for paragraph in top_level
+            if H.re.search(r'paraPrIDRef="(\d+)"', paragraph["attrs"]).group(1) in bullet_paras
+        ]
+        if len(list_paragraphs) != 5:
+            raise AssertionError(f"합성 글머리표 문단 수 불일치: {len(list_paragraphs)}")
         for paragraph in list_paragraphs:
             pid = H.re.search(r'paraPrIDRef="(\d+)"', paragraph["attrs"]).group(1)
             props = para_prs[pid]
-            if props["left"] != H.BODY_LIST_LEFT_INDENT or props["intent"] != H.BODY_LIST_FIRST_LINE_INDENT:
-                raise AssertionError(f"본문 목록 hanging indent 불일치: {paragraph['text'][:34]!r} / {props!r}")
-            if paragraph["text"] != paragraph["text"].lstrip(" "):
-                raise AssertionError(f"본문 목록에 앞 공백과 문단 들여쓰기가 중복됨: {paragraph['text'][:34]!r}")
+            if props["left"] != H.BODY_LIST_BULLET_POSITION or props["intent"] != 0:
+                raise AssertionError(f"본문 글머리표 위치 불일치: {paragraph['text'][:34]!r} / {props!r}")
+            if bullet_defs.get(props["heading"][1]) != H.BODY_LIST_BULLET_CHAR:
+                raise AssertionError(f"글머리표 정의 연결 불일치: {paragraph['text'][:34]!r}")
+            if f'styleIDRef="{bullet_style}"' not in paragraph["attrs"]:
+                raise AssertionError(f"글머리표 문단 스타일 불일치: {paragraph['text'][:34]!r}")
+            if paragraph["text"] != paragraph["text"].lstrip(" ") or H.TEXT_BULLET_RE.match(paragraph["text"]):
+                raise AssertionError(f"글머리표 문단 글에 공백·기호가 남음: {paragraph['text'][:34]!r}")
+            first_flags = int(H.re.search(r'<hp:lineseg [^>]*flags="(\d+)"', paragraph["body"]).group(1))
+            if not first_flags & H.LINESEG_HEAD_FLAG:
+                raise AssertionError(f"글머리표 첫 줄 캐시에 머리 표시가 없음: {paragraph['text'][:34]!r}")
+        if any(H.TEXT_BULLET_RE.match(paragraph["text"]) for paragraph in top_level):
+            raise AssertionError("글자로 친 글머리표 문단이 남음")
 
         long_item = next(paragraph for paragraph in list_paragraphs if "매우 긴 한국어" in paragraph["text"])
         line_positions = [
@@ -317,10 +337,8 @@ def main() -> int:
         ]
         if len(line_positions) < 2:
             raise AssertionError("긴 한국어 글머리표가 두 줄 이상으로 배치되지 않음")
-        if line_positions[0][1] != H.BODY_LIST_BULLET_POSITION:
-            raise AssertionError(f"글머리표 첫 줄 위치 불일치: {line_positions!r}")
-        if any(position[1] != H.BODY_LIST_LEFT_INDENT for position in line_positions[1:]):
-            raise AssertionError(f"글머리표 후속 줄이 본문 시작 위치에 맞지 않음: {line_positions!r}")
+        if any(position[1] != H.BODY_LIST_TEXT_START for position in line_positions):
+            raise AssertionError(f"글머리표 첫 줄·후속 줄이 본문 시작 위치에 맞지 않음: {line_positions!r}")
         if "##############################" in section:
             raise AssertionError("사용자 검토 마커가 생성 결과에 남음")
 
@@ -394,18 +412,55 @@ def main() -> int:
 
         list_entries = H.read_hwpx(output)
         list_section = H.get_text(list_entries, H.SECTION).replace(
-            "• 표준 라이브러리만 사용",
-            "         • 표준 라이브러리만 사용",
+            "<hp:t>표준 라이브러리만 사용</hp:t>",
+            "<hp:t>         표준 라이브러리만 사용</hp:t>",
             1,
         )
         H.set_text(list_entries, H.SECTION, list_section)
         H.write_hwpx(list_entries, bad_list_indent)
         require_issue(C.check(bad_list_indent), "본문 목록 들여쓰기", "중복")
 
+        # 글머리표 문단 글에 기호를 또 치면 두 번 보인다
+        double_bullet = temp / "DXS-AX-TST-글머리표_중복-20260902-v0.1.hwpx"
+        double_entries = H.read_hwpx(output)
+        double_section = H.get_text(double_entries, H.SECTION).replace(
+            "<hp:t>표준 라이브러리만 사용</hp:t>",
+            "<hp:t>\u2022 표준 라이브러리만 사용</hp:t>",
+            1,
+        )
+        H.set_text(double_entries, H.SECTION, double_section)
+        H.write_hwpx(double_entries, double_bullet)
+        require_issue(C.check(double_bullet), "본문 목록 글머리표", "두 번")
+
+        # 일반 문단에 글자로 친 글머리표는 한/글 글머리표 기능이 아님
+        text_bullet = temp / "DXS-AX-TST-글자_글머리표-20260902-v0.1.hwpx"
+        text_entries = H.read_hwpx(output)
+        text_section = H.get_text(text_entries, H.SECTION).replace(
+            "<hp:t>승인된 AX1 경량 생성기의 수용 테스트 문단입니다.</hp:t>",
+            "<hp:t>\u2022 승인된 AX1 경량 생성기의 수용 테스트 문단입니다.</hp:t>",
+            1,
+        )
+        H.set_text(text_entries, H.SECTION, text_section)
+        H.write_hwpx(text_entries, text_bullet)
+        require_issue(C.check(text_bullet), "본문 목록 글머리표", "글자로 침")
+
+        # 첫 줄 캐시에 머리 표시가 없으면 한/글이 기호를 그리지 않는다
+        head_flag = temp / "DXS-AX-TST-글머리표_머리표시-20260902-v0.1.hwpx"
+        flag_entries = H.read_hwpx(output)
+        flag_section = H.get_text(flag_entries, H.SECTION)
+        no_flag_body = long_item["body"].replace(
+            f'flags="{H.LINESEG_FLAGS | H.LINESEG_HEAD_FLAG}"', f'flags="{H.LINESEG_FLAGS}"', 1)
+        if no_flag_body == long_item["body"]:
+            raise AssertionError("글머리표 머리 표시 결함 주입에 실패함")
+        flag_section = flag_section.replace(long_item["body"], no_flag_body, 1)
+        H.set_text(flag_entries, H.SECTION, flag_section)
+        H.write_hwpx(flag_entries, head_flag)
+        require_issue(C.check(head_flag), "본문 목록 줄 배치", "머리 표시")
+
         lineseg_entries = H.read_hwpx(output)
         lineseg_section = H.get_text(lineseg_entries, H.SECTION)
         bad_long_body = long_item["body"].replace(
-            f'horzpos="{H.BODY_LIST_LEFT_INDENT}"',
+            f'horzpos="{H.BODY_LIST_TEXT_START}"',
             'horzpos="0"',
             1,
         )

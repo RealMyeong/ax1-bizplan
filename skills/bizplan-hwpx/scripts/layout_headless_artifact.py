@@ -67,6 +67,18 @@ def line_cache(starts, height: int, width: int, spacing: int) -> str:
         for i, pos in enumerate(starts)) + '</hp:linesegarray>'
 
 
+CELL_ITEM_PREFIX_RE = re.compile(r'^(?:• |\d{1,2}\) )')
+
+
+def cell_item_hang(text: str, regular: H.Font, boldfont: H.Font) -> int:
+    """칸 안 나열 항목(「• 」·「1) 」 로 시작)의 내어쓰기 폭. 항목이 아니면 0."""
+    m = CELL_ITEM_PREFIX_RE.match(text)
+    if not m:
+        return 0
+    width, _ = H.text_width(m[0], H.BODY_TEXT_HEIGHT, False, regular, boldfont)
+    return math.ceil(width)
+
+
 def reflow_table(tbl: str, char_prs: dict, regular: H.Font, boldfont: H.Font) -> str:
     """Rewrap generated, unmerged cells after width allocation; recompute row/table heights."""
     row_heights = []
@@ -85,18 +97,23 @@ def reflow_table(tbl: str, char_prs: dict, regular: H.Font, boldfont: H.Font) ->
             if width <= 0:
                 raise H.HeadlessHwpxError('표 셀의 본문 폭이 0 이하임')
             paras = list(top_paragraphs(cell))
-            if len(paras) != 1:
-                raise H.HeadlessHwpxError('경량 표는 셀당 단일 문단만 재배치함; upstream 경로 필요')
-            start, end, para = paras[0]
-            text, widths = H.paragraph_runs(para, char_prs, regular, boldfont)
-            starts = H.wrap_widths(text, widths, width)
+            if not paras:
+                raise H.HeadlessHwpxError('표 셀에 문단이 없음')
             height = H.BODY_TEXT_HEIGHT
             spacing = round(height * (H.CELL_LINE_SPACING - 100) / 100)
-            cache = line_cache(starts, height, width, spacing)
-            para = re.sub(r'<hp:linesegarray>.*?</hp:linesegarray>', '', para, flags=re.S)
-            para = para.replace('</hp:p>', cache + '</hp:p>')
-            cell = cell[:start] + para + cell[end:]
-            need = len(starts) * (height + spacing) + int(attr(margin, 'top')) + int(attr(margin, 'bottom'))
+            lines = 0
+            # 여러 문단은 생성기가 만든 칸 안 나열이다. 항목마다 첫 줄은 머리 기호부터,
+            # 후속 줄은 내어쓴 글 시작점부터 접는다. 줄 캐시 폭은 셀 폭 그대로 둔다.
+            for start, end, para in reversed(paras):
+                text, widths = H.paragraph_runs(para, char_prs, regular, boldfont)
+                hang = cell_item_hang(text, regular, boldfont) if len(paras) > 1 else 0
+                starts = H.wrap_widths(text, widths, width, following_avail=width - hang)
+                lines += len(starts)
+                cache = line_cache(starts, height, width, spacing)
+                para = re.sub(r'<hp:linesegarray>.*?</hp:linesegarray>', '', para, flags=re.S)
+                para = para.replace('</hp:p>', cache + '</hp:p>')
+                cell = cell[:start] + para + cell[end:]
+            need = lines * (height + spacing) + int(attr(margin, 'top')) + int(attr(margin, 'bottom'))
             cells.append((cm.start(), cm.end(), cell, need))
         if not cells:
             raise H.HeadlessHwpxError('본문 표에 셀이 없는 행이 있음')

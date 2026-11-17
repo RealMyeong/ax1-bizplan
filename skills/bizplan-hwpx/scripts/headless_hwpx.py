@@ -1095,6 +1095,8 @@ def wrap_lines(
         if width + w > limit and i > starts[-1]:
             if last_space > starts[-1]:
                 i = last_space + 1  # 어절 단위로 되돌린다
+            while i < len(text) - 1 and text[i] == " ":
+                i += 1  # 다음 줄이 공백으로 시작하지 않게 공백은 앞 줄 끝에 둔다
             starts.append(i)
             width, last_space = 0.0, -1
             continue
@@ -1103,19 +1105,26 @@ def wrap_lines(
     return starts
 
 
-def wrap_widths(text: str, widths: list, avail: int) -> list:
-    """글자별 폭이 이미 계산된 경우의 줄바꿈 지점. 여러 글자모양이 섞인 문단에 쓴다."""
+def wrap_widths(text: str, widths: list, avail: int, following_avail: int | None = None) -> list:
+    """글자별 폭이 이미 계산된 경우의 줄바꿈 지점. 여러 글자모양이 섞인 문단에 쓴다.
+
+    following_avail 은 둘째 줄부터의 폭이다 (내어쓰기 문단: 첫 줄은 머리 기호부터, 후속 줄은 글 시작점부터).
+    """
     if not text:
         return [0]
-    avail = avail * WRAP_SAFETY
+    first = avail * WRAP_SAFETY
+    following = (following_avail if following_avail is not None else avail) * WRAP_SAFETY
     starts, width, last_space = [0], 0.0, -1
     i = 0
     while i < len(text):
         if text[i] == " ":
             last_space = i
+        avail = first if len(starts) == 1 else following
         if width + widths[i] > avail and i > starts[-1]:
             if last_space > starts[-1]:
                 i = last_space + 1
+            while i < len(text) - 1 and text[i] == " ":
+                i += 1  # 다음 줄이 공백으로 시작하지 않게
             starts.append(i)
             width, last_space = 0.0, -1
             continue

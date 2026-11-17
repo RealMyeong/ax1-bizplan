@@ -11,6 +11,7 @@
     #### 이상  본문 목록으로 전환
     빈 줄 구분  본문 문단          -, *     리스트
     1. 2. 3.   번호 목록 (번호 보존 + 실제 줄바꿈에 맞는 hanging indent)
+    표 칸 「A / B」·「1) A 2) B」·「A<br>B」  칸 안 나열 (항목마다 줄 나눔, • 또는 번호 + 내어쓰기)
 표준 라이브러리만 사용하며 한컴오피스·COM 창을 실행하지 않는다. 임의 템플릿은
 받지 않고 스킬에 포함된 SHA-256 승인 템플릿만 사용한다.
 """
@@ -18,6 +19,7 @@
 from __future__ import annotations
 
 import argparse
+import math
 import re
 import sys
 import tempfile
@@ -56,6 +58,36 @@ def esc(s: str) -> str:
 
 
 # --- 마크다운 -----------------------------------------------------------------
+
+
+CELL_SLASH_RE = re.compile(r"\s+/\s+")
+CELL_NUM_RE = re.compile(r"(?:^|(?<=\s))(\d{1,2})\)\s+")
+CELL_BR_RE = re.compile(r"\s*<br\s*/?>\s*", re.I)
+CELL_BULLET = "• "
+
+
+def cell_items(text: str) -> list[str]:
+    """표 본문 칸 글을 나열 항목으로 나눈다. 항목은 화면에 보일 글 그대로다.
+
+    - 「A / B」 -> ["• A", "• B"]
+    - 「1) A 2) B」 -> ["1) A", "2) B"] (1부터 이어지는 번호만)
+    - 「A<br>B」 -> 줄 나눔. 「- 」로 시작한 줄은 「• 」, 「1) 」로 시작한 줄은 번호 그대로
+    - 항목이 하나면 [원문] (머리 기호 없음)
+    """
+    t = (text or "").strip()
+    parts = [x for x in CELL_BR_RE.split(t) if x]
+    if len(parts) > 1:
+        if all(CELL_NUM_RE.match(x) for x in parts):
+            return parts
+        return [CELL_BULLET + re.sub(r"^[-•]\s+", "", x) for x in parts]
+    nums = list(CELL_NUM_RE.finditer(t))
+    if len(nums) >= 2 and nums[0].start() == 0 and [int(m.group(1)) for m in nums] == list(range(1, len(nums) + 1)):
+        ends = [m.start() for m in nums[1:]] + [len(t)]
+        return [t[m.start():e].strip() for m, e in zip(nums, ends)]
+    parts = [x.strip() for x in CELL_SLASH_RE.split(t) if x.strip()]
+    if len(parts) >= 2:
+        return [CELL_BULLET + x for x in parts]
+    return [t]
 
 
 def strip_inline(s: str) -> str:
@@ -141,6 +173,7 @@ def parse_markdown(text: str) -> list:
             while i < len(lines) and lines[i].strip().startswith("|"):
                 cells = [c.strip() for c in lines[i].strip().strip("|").split("|")]
                 if not all(re.fullmatch(r":?-{2,}:?", c) for c in cells):
+                    # <br> 은 칸 안 줄 나눔 표시라 strip_inline 전후로 그대로 둔다
                     rows.append([strip_inline(c) for c in cells])
                 i += 1
             if rows:
@@ -395,6 +428,23 @@ class Emitter:
             following_horzpos=left,
         )
 
+    def cell_item(self, text: str, char_id: str, usable: int) -> str:
+        """표 칸 안 나열 항목 1개. 머리 기호(「• 」·「1) 」) 폭만큼 내어써 접힌 줄을 글 시작점에 맞춘다.
+
+        줄 캐시 폭은 셀 폭 그대로 둔다 (최종 폭에서 layout_headless_artifact.reflow_table 이 다시 계산).
+        """
+        hang = L.cell_item_hang(text, self.regular, self.boldfont)
+        starts = H.wrap_lines(text, H.BODY_TEXT_HEIGHT, False, self.regular, self.boldfont, usable,
+                              following_avail=usable - hang)
+        spacing = round(H.BODY_TEXT_HEIGHT * (H.CELL_LINE_SPACING - 100) / 100)
+        para_id = self.pool.para_format(left=hang, intent=-hang, align=H.TABLE_BODY_HORIZONTAL_ALIGN)
+        return (
+            f'<hp:p id="{self._id()}" paraPrIDRef="{para_id}" styleIDRef="0"'
+            f' pageBreak="0" columnBreak="0" merged="0">'
+            f'<hp:run charPrIDRef="{char_id}"><hp:t>{esc(text)}</hp:t></hp:run>'
+            f'{L.line_cache(starts, H.BODY_TEXT_HEIGHT, usable, spacing)}</hp:p>'
+        )
+
     def caption(self, text: str) -> str:
         return self.para(text, self.pool.para_format(align='CENTER'),
                          self.pool.char(H.BODY_TEXT_HEIGHT, False), H.BODY_TEXT_HEIGHT)
@@ -437,18 +487,10 @@ class Emitter:
         total = self.text_width - 2 * TABLE_OUT_MARGIN - 4
         pad = CELL_MARGIN[0] + CELL_MARGIN[1]
 
-        # 열 너비: 열별 최장 내용에 비례해 나누고 최소 폭을 보장한다.
-        # 단어 잘림은 이후 서식 적용 단계가 다시 잡아준다.
-        weights = []
-        for c in range(n_col):
-            longest = 0
-            for r in rows:
-                w, _ = H.text_width(r[c], H.BODY_TEXT_HEIGHT, False, regular, boldfont)
-                longest = max(longest, w)
-            weights.append(max(longest + pad, MIN_COL_WIDTH))
-        scale = (total - sum(MIN_COL_WIDTH for _ in range(n_col))) / max(1, sum(weights))
-        widths = [MIN_COL_WIDTH + int(w * scale) for w in weights]
-        widths[-1] += total - sum(widths)
+        # 칸 안 나열은 내용 셀(1행·1열 제외)만 나눈다. 축 셀은 가운데 정렬이라 나누지 않는다
+        items = [[[cell] if (r_i == 0 or c_i == 0) else cell_items(cell) for c_i, cell in enumerate(row)]
+                 for r_i, row in enumerate(rows)]
+        widths = column_widths(items, total, pad, regular, boldfont)
 
         head_char = self.pool.char(H.BODY_TEXT_HEIGHT, True)
         body_char = self.pool.char(H.BODY_TEXT_HEIGHT, False)
@@ -458,27 +500,30 @@ class Emitter:
         for r_i, row in enumerate(rows):
             is_head = r_i == 0
             heights = []
-            for c_i, cell in enumerate(row):
+            for c_i in range(len(row)):
                 usable = widths[c_i] - pad - 2
-                lines = H.wrap_lines(cell, H.BODY_TEXT_HEIGHT, is_head, regular, boldfont, usable)
-                heights.append(len(lines))
+                heights.append(cell_layout(items[r_i][c_i], is_head, usable, regular, boldfont)[0])
             row_h = max(heights) * line_h + CELL_MARGIN[2] + CELL_MARGIN[3]
             total_h += row_h
             tcs = []
             for c_i, cell in enumerate(row):
                 is_axis = is_head or c_i == 0
-                inner = self.para(
-                    cell,
-                    (
-                        self.pool.center_para
-                        if is_axis
-                        else self.pool.para_format(align=H.TABLE_BODY_HORIZONTAL_ALIGN)
-                    ),
-                    head_char if is_head else body_char,
-                    H.BODY_TEXT_HEIGHT,
-                    horzsize=widths[c_i] - pad - 2,
-                    bold=is_head,
-                )
+                cell_paras = items[r_i][c_i]
+                if len(cell_paras) > 1:
+                    inner = "".join(self.cell_item(text, body_char, widths[c_i] - pad - 2) for text in cell_paras)
+                else:
+                    inner = self.para(
+                        cell_paras[0] if not is_axis else cell,
+                        (
+                            self.pool.center_para
+                            if is_axis
+                            else self.pool.para_format(align=H.TABLE_BODY_HORIZONTAL_ALIGN)
+                        ),
+                        head_char if is_head else body_char,
+                        H.BODY_TEXT_HEIGHT,
+                        horzsize=widths[c_i] - pad - 2,
+                        bold=is_head,
+                    )
                 tcs.append(
                     f'<hp:tc name="" header="{TABLE_REPEAT_HEADER if is_head else 0}" hasMargin="0" protect="0"'
                     f' editable="0" dirty="0" borderFillIDRef="{self.plain_fill}">'
@@ -518,6 +563,173 @@ class Emitter:
             f'<hp:run charPrIDRef="{body_char}">{tbl}</hp:run>'
             f"{self._linesegs('', H.BODY_TEXT_HEIGHT, False, self.text_width)}</hp:p>"
         )
+
+
+# --- 표 열 너비 -------------------------------------------------------------------
+# 한/글은 표 칸 글을 어절(공백) 단위로 접고, 칸보다 긴 어절은 글자 중간에서 끊는다
+# (「·」「)」 뒤에서는 나누지 않는다). 그래서 줄 수를 어절 단위로 세고, 끊김에 벌점을 준다.
+SHORT_COL_RATIO = 0.22   # 한 줄 폭이 표 폭의 이 비율 이하인 열(ID·번호 등)은 한 줄로 고정
+ONE_LINE_SLACK = 1.12    # 한 줄로 둘 짧은 열이 한/글에서 접히지 않게 두는 여유 배율
+LINE_SLACK = 1.04        # 열 너비를 고를 때 줄 수 추정용 여유 배율
+ROW_LINE_COST = 1000     # 행 높이(행마다 가장 많이 접히는 칸) 1줄
+FORCED_BREAK_COST = 700  # 어절 중간 끊김 1곳
+TOTAL_LINE_COST = 150    # 칸 줄 수 합 1줄 (한 열만 좁아져 한두 낱말씩 접히는 배분을 피함)
+SHORT_WRAP_COST = 300    # 20자 이하 짧은 글이 접힌 줄 1개
+GRID_LIMIT = 40000       # 격자 탐색 배분 수 상한
+
+
+def _item_hang(text: str, regular: H.Font, boldfont: H.Font) -> int:
+    return L.cell_item_hang(text, regular, boldfont)
+
+
+def cell_layout(items: list[str], bold: bool, avail: float, regular: H.Font, boldfont: H.Font):
+    """칸의 (줄 수, 어절 중간 끊김 수). 나열 항목은 후속 줄을 내어쓴 폭에서 접는다."""
+    lines, forced = 0, 0
+    multi = len(items) > 1
+    for text in items:
+        if not text:
+            lines += 1
+            continue
+        hang = _item_hang(text, regular, boldfont) if multi else 0
+        starts = H.wrap_lines(text, H.BODY_TEXT_HEIGHT, bold, regular, boldfont, max(1.0, avail),
+                              following_avail=max(1.0, avail - hang))
+        lines += len(starts)
+        forced += sum(1 for st in starts[1:] if text[st - 1] != " ")
+        prefix = L.CELL_ITEM_PREFIX_RE.match(text) if multi else None
+        if prefix and len(starts) > 1 and starts[1] == len(prefix[0]):
+            forced += 1  # 첫 어절이 넘쳐 머리 기호만 첫 줄에 남는 경우
+    return max(lines, 1), forced
+
+
+def column_widths(items: list, total: int, pad: int, regular: H.Font, boldfont: H.Font) -> list[int]:
+    """표 열 너비. items 는 행·열마다 칸의 항목 목록 (cell_items 결과, 축 셀은 [원문]).
+
+    1. 열마다 최소 폭(검사기와 같은 기준으로 끊을 수 없는 가장 긴 낱말 + 내어쓰기 + 셀 여백)과
+       한 줄 폭(가장 긴 항목 × ONE_LINE_SLACK)을 잰다
+    2. 짧은 열(한 줄 폭 ≤ 표 폭 × SHORT_COL_RATIO)은 한 줄 폭으로 고정한다
+    3. 한 줄 폭 합이 표 폭 이하이면 모두 한 줄, 남는 폭은 긴 열에 비례해 준다
+    4. 넘치면 고정하지 않은 열의 배분을 격자로 모두 견줘 벌점이 가장 작은 것을 고르고,
+       두 열 사이에서 폭을 조금씩 옮겨 다듬는다. 벌점 = 행 높이 + 어절 끊김 + 칸 줄 수 합 + 짧은 글 접힘
+    """
+    n = len(items[0])
+    extra = pad + 2
+    mins, maxs = [float(MIN_COL_WIDTH)] * n, [0.0] * n
+    for r_i, row in enumerate(items):
+        bold = r_i == 0
+        for c in range(n):
+            multi = len(row[c]) > 1
+            for text in row[c]:
+                if not text:
+                    continue
+                hang = _item_hang(text, regular, boldfont) if multi else 0
+                full, _ = H.text_width(text, H.BODY_TEXT_HEIGHT, bold, regular, boldfont)
+                word, _ = H.longest_word_width(text, H.BODY_TEXT_HEIGHT, bold, regular, boldfont)
+                maxs[c] = max(maxs[c], full * ONE_LINE_SLACK + extra + 300)
+                mins[c] = max(mins[c], math.ceil(word) + hang + extra)
+    maxs = [max(mx, mn) for mx, mn in zip(maxs, mins)]
+    rigid = [maxs[c] <= total * SHORT_COL_RATIO for c in range(n)]
+    lo = [maxs[c] if rigid[c] else mins[c] for c in range(n)]
+    if sum(lo) > total:  # 고정 열이 너무 많으면 고정을 풀고 최소 폭부터 다시
+        rigid = [False] * n
+        lo = list(mins)
+    if sum(maxs) <= total:
+        widths = list(maxs)
+        flex = [c for c in range(n) if not rigid[c]] or list(range(n))
+        spare = total - sum(widths)
+        weight = sum(maxs[c] for c in flex)
+        for c in flex:
+            widths[c] += spare * maxs[c] / weight
+    elif sum(lo) <= total:
+        widths = _best_widths(items, lo, maxs, rigid, total, extra, regular, boldfont)
+    else:  # 최소 폭도 들어가지 않는다. 비율로 줄이고 단어 잘림은 검사기가 알린다
+        widths = [w * total / sum(lo) for w in lo]
+    widths = [int(w) for w in widths]
+    widths[max(range(n), key=lambda c: widths[c])] += total - sum(widths)
+    return widths
+
+
+def _best_widths(items, lo, maxs, rigid, total, extra, regular, boldfont):
+    n = len(lo)
+    memo = {}
+
+    def layout(r, c, w):
+        key = (r, c, int(w))
+        if key not in memo:
+            memo[key] = cell_layout(items[r][c], r == 0, max(1.0, (w - extra) / LINE_SLACK), regular, boldfont)
+        return memo[key]
+
+    def cost(ws):
+        total_cost = 0
+        for r in range(len(items)):
+            lf = [layout(r, c, ws[c]) for c in range(n)]
+            ls = [l for l, _ in lf]
+            total_cost += max(ls) * ROW_LINE_COST
+            total_cost += sum(f for _, f in lf) * FORCED_BREAK_COST
+            total_cost += sum(ls) * TOTAL_LINE_COST
+            total_cost += sum(SHORT_WRAP_COST * (l - len(items[r][c])) for c, l in enumerate(ls)
+                              if max(len(t) for t in items[r][c]) <= 20)
+        return total_cost
+
+    flex = [c for c in range(n) if not rigid[c]]
+    widths = list(lo)
+    if not flex:
+        return widths
+    budget = total - sum(widths[c] for c in range(n) if c not in flex)
+    step = max(total / 64, 300.0)
+    while True:
+        ranges = [(math.ceil(lo[c] / step), max(math.ceil(lo[c] / step), math.ceil(maxs[c] / step))) for c in flex]
+        combos = 1
+        for a, b in ranges[:-1]:
+            combos *= b - a + 1
+        if combos <= GRID_LIMIT:
+            break
+        step *= 1.25
+    units = int(budget // step)
+    best = [None, None]
+
+    def search(k, left, acc):
+        if k == len(flex) - 1:
+            if left < ranges[k][0]:
+                return
+            cand = list(widths)
+            for c, u in zip(flex, acc + [left]):
+                cand[c] = u * step
+            cand[flex[-1]] += budget - units * step
+            v = cost(cand)
+            if best[0] is None or v < best[0]:
+                best[0], best[1] = v, cand
+            return
+        lo_u, hi_u = ranges[k]
+        rest = sum(r[0] for r in ranges[k + 1:])
+        for u in range(lo_u, min(hi_u, left - rest) + 1):
+            search(k + 1, left - u, acc + [u])
+
+    search(0, units, [])
+    if best[1] is None:  # 격자에 맞는 배분이 없으면 최소 폭 + 남는 폭 비례
+        spare = budget - sum(lo[c] for c in flex)
+        weight = sum(maxs[c] - lo[c] for c in flex) or 1
+        for c in flex:
+            widths[c] = lo[c] + spare * (maxs[c] - lo[c]) / weight
+        best = [cost(widths), widths]
+    widths = best[1]
+    score = best[0]
+    for delta in (total / 80, total / 160):  # 두 열 사이에서 조금씩 옮겨 다듬기
+        improved = True
+        while improved:
+            improved = False
+            for a in flex:
+                for b in flex:
+                    if a == b or widths[b] - delta < lo[b]:
+                        continue
+                    widths[a] += delta
+                    widths[b] -= delta
+                    v = cost(widths)
+                    if v < score:
+                        score, improved = v, True
+                    else:
+                        widths[a] -= delta
+                        widths[b] += delta
+    return widths
 
 
 def plain_border_fill(header: str) -> str:

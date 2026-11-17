@@ -274,3 +274,54 @@ def check_layout(section: str, header: str):
         if sum(row_heights) != item['height']:
             issues.append(('표 행 높이', '행 높이 합과 표 전체 높이가 일치하지 않음'))
     return issues
+
+
+def estimate_pages(section: str, header: str, first_id: str) -> dict:
+    """first_id 문단이 1쪽에서 시작한다고 보고 최상위 문단마다 쪽 번호를 추정한다.
+
+    줄 배치 캐시·문단 위아래 간격·새 쪽(pageBreak)·표 높이로 쌓는다. 한 쪽 이내
+    inline 표는 앵커 줄 높이(표 전체 높이)로 통째로 넘기고, floating 표는 행 단위로
+    다음 쪽에 넘긴다. 글꼴 메트릭 기반 추정이며 한컴 실제 쪽 수의 증명이 아니다.
+    """
+    page_h = page_body_height(section)
+    props = H.parse_para_prs(header)
+    pages, page, y, started = {}, 1, 0, False
+    for _, _, para in top_paragraphs(section):
+        pid = attr(para, 'id')
+        if not started:
+            if pid != first_id:
+                continue
+            started = True
+        elif attr(para, 'pageBreak') == '1':
+            page, y = page + 1, 0
+        p = props.get(attr(para, 'paraPrIDRef'), {})
+        prev, nxt = p.get('prev') or 0, p.get('next') or 0
+        table = re.search(r'<hp:tbl\b.*</hp:tbl>', para, re.S)
+        if table and attr(re.search(r'<hp:pos\b[^>]*/>', table[0])[0], 'treatAsChar') == '0':
+            pages[pid] = page
+            margin = re.search(r'<hp:outMargin\b[^>]*/>', table[0])[0]
+            y += int(attr(margin, 'top', '0'))
+            repeat = attr(table[0], 'repeatHeader') == '1'
+            title_h = 0
+            for index, row in enumerate(re.findall(r'<hp:tr\b[^>]*>.*?</hp:tr>', table[0], re.S)):
+                heights = [int(h) for h in re.findall(r'<hp:cellSz\b[^>]*height="(\d+)"', row)]
+                row_h = max(heights, default=0)
+                if index == 0 and repeat:
+                    title_h = row_h
+                if y + row_h > page_h and y > 0:
+                    # 제목 줄 자동 반복: 다음 쪽 조각도 첫 행을 다시 그린다
+                    page, y = page + 1, title_h
+                y += row_h
+            y += int(attr(margin, 'bottom', '0'))
+            continue
+        y += prev
+        if y > page_h:
+            page, y = page + 1, 0
+        pages[pid] = page
+        cache = para.rsplit('</hp:tbl>', 1)[-1]
+        for size, spacing in re.findall(r'<hp:lineseg\b[^>]*vertsize="(\d+)"[^>]*spacing="(-?\d+)"', cache):
+            if y + int(size) > page_h and y > 0:
+                page, y = page + 1, 0
+            y += int(size) + int(spacing)
+        y += nxt
+    return pages

@@ -715,7 +715,8 @@ def validate_approved_hwpx_asset() -> None:
 
 
 def validate_headless_acceptance() -> None:
-    for test in ("headless_hwpx_acceptance_test.py", "headless_table_layout_test.py", "hwpx_metadata_test.py", "headless_media_test.py"):
+    for test in ("headless_hwpx_acceptance_test.py", "headless_table_layout_test.py", "hwpx_metadata_test.py", "headless_media_test.py",
+                 "headless_page_break_test.py"):
         result = subprocess.run(
             [sys.executable, str(ROOT / "scripts" / test)],
             cwd=ROOT,

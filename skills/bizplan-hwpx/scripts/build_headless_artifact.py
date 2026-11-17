@@ -11,6 +11,7 @@
     #### 이상  본문 목록으로 전환
     빈 줄 구분  본문 문단          -, *     리스트
     1. 2. 3.   번호 목록 (번호 보존 + 실제 줄바꿈에 맞는 hanging indent)
+    <!-- 쪽나눔 -->  다음 블록(제목·문단·목록·표·그림)을 새 쪽에서 시작 (한/글 Ctrl+Enter)
 표준 라이브러리만 사용하며 한컴오피스·COM 창을 실행하지 않는다. 임의 템플릿은
 받지 않고 스킬에 포함된 SHA-256 승인 템플릿만 사용한다.
 """
@@ -40,6 +41,8 @@ OUTLINE_PREFIX_SPACES = H.HEADING_PREFIX_SPACES
 TABLE_OUT_MARGIN = 283
 CELL_MARGIN = (510, 510, 141, 141)  # left right top bottom
 MIN_COL_WIDTH = 3000
+# 원고의 명시적 쪽 나눔 표시. 한 줄 전체가 이 주석일 때만 인식한다.
+PAGE_BREAK_RE = re.compile(r"<!--\s*쪽\s*나눔\s*-->")
 
 # 표 기본 속성 (한/글 [표 속성] 대화상자와 대응)
 #   글자처럼 취급   -> 기본 설정. 최종 열 폭/행 높이 계산 뒤 한 쪽 초과 표만 해제.
@@ -97,6 +100,13 @@ def parse_markdown(text: str) -> list:
     while i < len(lines):
         line = lines[i]
         stripped = line.strip()
+
+        if PAGE_BREAK_RE.fullmatch(stripped):
+            flush()
+            if blocks and blocks[-1][0] != "pb":
+                blocks.append(("pb",))
+            i += 1
+            continue
 
         if not stripped or re.fullmatch(r"-{3,}", stripped):
             flush()
@@ -167,6 +177,8 @@ def parse_markdown(text: str) -> list:
         i += 1
 
     flush()
+    while blocks and blocks[-1][0] == "pb":
+        blocks.pop()  # 뒤에 이어질 블록이 없는 쪽 나눔은 빈 쪽만 만든다
     # Explicit table captions supplied above a table are moved below that table.
     # No arbitrary prose is moved and no captions/numbers are invented.
     for index in range(len(blocks) - 1):
@@ -793,7 +805,16 @@ def build(
         log.append(f"목차 항목 {len(chapters)}개 생성")
 
     previous_kind = None
+    page_break_next = False
+    page_breaks = 0
     for block in blocks:
+        if block[0] == "pb":
+            # 원고의 <!-- 쪽나눔 --> : 다음 블록의 첫 문단에 pageBreak=1 (한/글 Ctrl+Enter).
+            # 위 간격은 layout 단계가 새 쪽 첫 문단으로 보고 0으로 둔다.
+            page_break_next = True
+            previous_kind = None
+            continue
+        mark = len(parts)
         if block[0] == "h":
             add_top_spacing = block[1] in {2, 3} and previous_kind in {"p", "li", "ol", "table", "caption", "pic"}
             parts.append(emitter.heading(block[1], block[2], add_top_spacing))
@@ -809,7 +830,15 @@ def build(
             parts.append(emitter.picture(block[1]))
         elif block[0] == 'caption':
             parts.append(emitter.caption(block[1]))
+        if page_break_next and len(parts) > mark:
+            # 수준 1 제목은 이미 pageBreak=1 이므로 그대로 둔다
+            if ' pageBreak="0"' in parts[mark].split(">", 1)[0]:
+                parts[mark] = parts[mark].replace(' pageBreak="0"', ' pageBreak="1"', 1)
+                page_breaks += 1
+            page_break_next = False
         previous_kind = block[0]
+    if page_breaks:
+        log.append(f"원고의 쪽 나눔 표시 {page_breaks}곳: 다음 블록을 새 쪽에서 시작")
     log.append(f"본문·목록·표 뒤 수준 2~3 제목 윗간격 {H.HEADING_TOP_SPACING} HWPUNIT 적용")
     log.append(
         "본문 목록 hanging indent 적용: "

@@ -231,5 +231,109 @@ class LayoutTests(unittest.TestCase):
                 release.validate_no_private_artifacts()
 
 
+CELL_LIST_TABLE = (
+    '| 절차 ID | 요구사항 ID | 시험절차 | 합격 조건 | 증빙 / 비고 |\n'
+    '| --- | --- | --- | --- | --- |\n'
+    '| AB-01 | SR-AB-01.02, 01.03 | 합성 신호 발생 / 합성 이벤트 확인 | 이벤트 번호·생성시각·설비·공정 기록 / 합성 화면에 이벤트 표시 | 화면 캡처, 로그 |\n'
+    '| AB-02 | SR-AB-02.01 | 1) 기준 시간 확인 2) 안내 등록 3) 수신 상태 확인 | 단일 합격 조건 문장입니다 | 합성 화면 캡처 |\n'
+    '| AB-03 / AB-04 | SR-AB-03.01 | 첫 줄<br>둘째 줄 | - 줄 나눔 항목<br>- 두 번째 항목 | 로그 |\n'
+)
+
+
+class CellListTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.temp = tempfile.TemporaryDirectory(prefix='ax1-cell-list-')
+        cls.directory = Path(cls.temp.name)
+        source = cls.directory / 'cell-list.md'
+        source.write_text('# 1. 칸 나열 합성\n\n본문입니다.\n\n' + CELL_LIST_TABLE, encoding='utf-8')
+        cls.output = cls.directory / 'DXS-AX-TST-칸나열검증-20260907-v0.1.hwpx'
+        cls.template = B.default_template()
+        B.build(cls.template, source, cls.output,
+                dict(agency='합성 기관', program='합성 사업', project_number='SYNTHETIC',
+                     project='합성 과제', title='칸나열검증', document_type='시험'),
+                revision_date='2026-09-07')
+        entries = H.read_hwpx(cls.output)
+        cls.header = H.get_text(entries, H.HEADER)
+        cls.section = H.get_text(entries, H.SECTION)
+        cls.props = H.parse_para_prs(cls.header)
+        table = next(i['table'] for i in L.layout_plan(cls.section, cls.header) if i['table'])
+        cls.cells = {}
+        for cell in re.findall(r'<hp:tc\b.*?</hp:tc>', table, re.S):
+            address = re.search(r'<hp:cellAddr colAddr="(\d+)" rowAddr="(\d+)"/>', cell)
+            paras = [p for _, _, p in L.top_paragraphs(cell)]
+            cls.cells[(int(address[2]), int(address[1]))] = paras
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.temp.cleanup()
+
+    @staticmethod
+    def text(para):
+        return H.unescape(''.join(re.findall(r'<hp:t>([^<]*)</hp:t>', para)))
+
+    def test_cell_items_split_rules(self):
+        self.assertEqual(B.cell_items('A / B'), ['• A', '• B'])
+        self.assertEqual(B.cell_items('1) 가 2) 나 3) 다'), ['1) 가', '2) 나', '3) 다'])
+        self.assertEqual(B.cell_items('가<br>나'), ['• 가', '• 나'])
+        self.assertEqual(B.cell_items('1) 가<br>2) 나'), ['1) 가', '2) 나'])
+        self.assertEqual(B.cell_items('단일 문장 (1) 포함'), ['단일 문장 (1) 포함'])
+        self.assertEqual(B.cell_items('2) 가 3) 나'), ['2) 가 3) 나'])  # 1부터가 아니면 나누지 않음
+        self.assertEqual(B.cell_items('SR-AB-01 ~ 05'), ['SR-AB-01 ~ 05'])
+
+    def test_slash_list_becomes_bullet_paragraphs_with_hanging_indent(self):
+        paras = self.cells[(1, 3)]
+        self.assertEqual([self.text(p) for p in paras],
+                         ['• 이벤트 번호·생성시각·설비·공정 기록', '• 합성 화면에 이벤트 표시'])
+        regular, bold = H.Font(H.MALGUN), H.Font(H.MALGUN_BOLD)
+        hang = L.cell_item_hang('• ', regular, bold)
+        for para in paras:
+            props = self.props[L.attr(para, 'paraPrIDRef')]
+            self.assertEqual((props['left'], props['intent'], props['align']), (hang, -hang, 'LEFT'))
+
+    def test_numbered_list_and_br_lines(self):
+        self.assertEqual([self.text(p) for p in self.cells[(2, 2)]],
+                         ['1) 기준 시간 확인', '2) 안내 등록', '3) 수신 상태 확인'])
+        self.assertEqual([self.text(p) for p in self.cells[(3, 2)]], ['• 첫 줄', '• 둘째 줄'])
+        self.assertEqual([self.text(p) for p in self.cells[(3, 3)]], ['• 줄 나눔 항목', '• 두 번째 항목'])
+
+    def test_single_item_header_and_axis_cells_are_not_split(self):
+        self.assertEqual([self.text(p) for p in self.cells[(2, 3)]], ['단일 합격 조건 문장입니다'])
+        self.assertEqual([self.text(p) for p in self.cells[(0, 4)]], ['증빙 / 비고'])
+        self.assertEqual([self.text(p) for p in self.cells[(3, 0)]], ['AB-03 / AB-04'])
+
+    def test_short_id_column_stays_on_one_line(self):
+        for row in (1, 2, 3):
+            segs = re.findall(r'<hp:lineseg\b[^>]*/>', self.cells[(row, 0)][0])
+            self.assertEqual(len(segs), 1)
+
+    def test_no_line_starts_with_space(self):
+        for paras in self.cells.values():
+            for para in paras:
+                text = self.text(para)
+                for pos in re.findall(r'<hp:lineseg [^>]*textpos="(\d+)"', para)[1:]:
+                    self.assertNotEqual(text[int(pos)], ' ', text)
+
+    def test_checker_passes_and_reformat_is_idempotent(self):
+        self.assertEqual(C.check(self.output), [])
+        target = self.directory / 'DXS-AX-TST-칸나열재서식-20260907-v0.1.hwpx'
+        A.apply(self.output, target)
+        self.assertEqual(H.get_text(H.read_hwpx(target), H.SECTION), self.section)
+
+    def test_column_widths_avoid_mid_word_breaks_when_possible(self):
+        regular, bold = H.Font(H.MALGUN), H.Font(H.MALGUN_BOLD)
+        rows = [['번호', '내용', '비고'],
+                ['1', '스마트글라스·현장 대시보드 화면 캡처', '짧은 비고'],
+                ['2', '정지시간·무작업률 산출 / 종료시각 저장', '비고']]
+        items = [[[c] if (r == 0 or i == 0) else B.cell_items(c) for i, c in enumerate(row)] for r, row in enumerate(rows)]
+        total = 30000
+        widths = B.column_widths(items, total, 1020, regular, bold)
+        self.assertEqual(sum(widths), total)
+        for r in range(1, 3):
+            for c in range(3):
+                _, forced = B.cell_layout(items[r][c], False, widths[c] - 1022, regular, bold)
+                self.assertEqual(forced, 0, (r, c, widths))
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

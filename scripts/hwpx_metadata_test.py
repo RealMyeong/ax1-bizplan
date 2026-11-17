@@ -25,11 +25,11 @@ class MetadataTests(unittest.TestCase):
         self.cover = dict(agency='합성기관', program='합성사업', project_number='TEST-0000',
                           project='합성과제', title='현재 수집 데이터 정의서', document_type='데이터 정의서')
 
-    def build(self, version='v0.1', **kwargs):
+    def build(self, version='v0.1', note='합성 개정', **kwargs):
         path = self.root / f'DXS-AX-DAT-합성정의서-20260910-{version}.hwpx'
         B.build(B.default_template(), self.content, path, self.cover,
                 artifact_version=version, revision_date='2026-09-10',
-                revision_note='합성 개정', revision_author='합성 작성자', **kwargs)
+                revision_note=note, revision_author='합성 작성자', **kwargs)
         self.assertEqual(C.check(path), [])
         return path
 
@@ -64,6 +64,40 @@ class MetadataTests(unittest.TestCase):
         self.assertEqual([r.version for r in self.records(new)], ['v0.1', 'v0.2'])
         self.assertEqual(self.records(new)[0], self.records(old)[0])
         self.assertEqual(old.read_bytes(), before)
+
+    def revision_table(self, path):
+        section = H.get_text(H.read_hwpx(path), H.SECTION)
+        a, b = H.revision_table_spans(section, H.body_start_offset(section))[0]
+        return section, section[a:b]
+
+    def test_history_cells_left_aligned_without_editing_shared_style(self):
+        long_note = '합성 시험 항목 8건·절차 21건 반영, 재검증 시험 항목 변경'
+        old = self.build(note=long_note)
+        new = self.build('v0.2', note=long_note, previous_artifact=old, previous_sha256=H.sha256_file(old))
+        template_section, template_table = self.revision_table(B.default_template())
+        template_header = H.get_text(H.read_hwpx(B.default_template()), H.HEADER)
+        template_cells = {(c.row, c.col): c for c in H.cells(template_table)}
+        shared = H.re.search(r'paraPrIDRef="(\d+)"', template_cells[(1, 2)].inner).group(1)
+        self.assertEqual(H.parse_para_prs(template_header)[shared]['align'], 'JUSTIFY')
+
+        section, table = self.revision_table(new)
+        header = H.get_text(H.read_hwpx(new), H.HEADER)
+        aligns = {pid: info['align'] for pid, info in H.parse_para_prs(header).items()}
+        # 공유 정의는 그대로 양쪽 정렬, 기록한 칸만 왼쪽 정렬 복제본을 쓴다
+        self.assertEqual(aligns[shared], 'JUSTIFY')
+        written = [c for c in H.cells(table) if c.row > 0 and H.cell_text(c)]
+        self.assertEqual(len(written), 8)
+        for cell in written:
+            pid = H.re.search(r'paraPrIDRef="(\d+)"', cell.inner).group(1)
+            self.assertIn(aligns[pid], {'LEFT', 'CENTER'}, (cell.row, cell.col))
+        note_cell = next(c for c in written if c.row == 2 and c.col == 2)
+        self.assertGreater(note_cell.inner.count('<hp:lineseg '), 1)
+        # 표 구조·열 너비·행 수와 표 밖 문단의 공유 문단모양 연결은 바뀌지 않는다
+        self.assertEqual([(c.row, c.col, c.width) for c in H.cells(table)],
+                         [(c.row, c.col, c.width) for c in H.cells(template_table)])
+        outside = lambda s, t: s.replace(t, '').count(f'paraPrIDRef="{shared}"')
+        self.assertEqual(outside(section[:H.body_start_offset(section)], table),
+                         outside(template_section[:H.body_start_offset(template_section)], template_table))
 
     def test_missing_history_not_silently_reset(self):
         with self.assertRaisesRegex(H.HeadlessHwpxError, '기준본'):

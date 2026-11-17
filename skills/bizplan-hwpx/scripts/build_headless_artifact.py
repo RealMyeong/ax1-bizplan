@@ -9,7 +9,7 @@
 지원하는 마크다운
     #/##/###   장·절·항 제목   | ... |   표 (첫 줄이 머리행)
     #### 이상  본문 목록으로 전환
-    빈 줄 구분  본문 문단          -, *     리스트
+    빈 줄 구분  본문 문단          -, *, •  리스트 (한/글 글머리표 기능, 「글머리표 1」 스타일)
     1. 2. 3.   번호 목록 (번호 보존 + 실제 줄바꿈에 맞는 hanging indent)
 표준 라이브러리만 사용하며 한컴오피스·COM 창을 실행하지 않는다. 임의 템플릿은
 받지 않고 스킬에 포함된 SHA-256 승인 템플릿만 사용한다.
@@ -148,7 +148,7 @@ def parse_markdown(text: str) -> list:
                 blocks.append(("table", [r + [""] * (width - len(r)) for r in rows]))
             continue
 
-        m = re.match(r"^(\s*)[-*]\s+(.*)$", line)
+        m = re.match(r"^(\s*)[-*•]\s+(.*)$", line)
         if m:
             flush()
             blocks.append(("li", len(m.group(1)) // 2 + 1, strip_inline(m.group(2))))
@@ -245,6 +245,7 @@ class StylePool:
         intent: int = 0,
         prev: int = 0,
         align: str | None = None,
+        bullet: str | None = None,
     ) -> str:
         """Return a paragraph style with canonical HwpUnitChar margin values.
 
@@ -269,6 +270,8 @@ class StylePool:
             return margin
 
         block = re.sub(r'<hh:margin>.*?</hh:margin>', replace_margin, block, flags=re.S)
+        if bullet is not None:
+            block = H.set_para_heading(block, "BULLET", bullet)
         if align is not None:
             block = re.sub(
                 r'(<hh:align horizontal=")\w+(")',
@@ -315,6 +318,11 @@ class Emitter:
         self.boldfont = boldfont
         self.styles = styles
         self.next_id = 1200000000
+        # 본문 글머리표: 한/글 글머리표 정의 + 기호 위치(BODY_LIST_BULLET_POSITION)의 문단모양 + 「글머리표 1」 스타일
+        pool.header, bullet_id = H.ensure_body_bullet(pool.header)
+        self.bullet_para = pool.para_format(left=H.BODY_LIST_BULLET_POSITION, bullet=bullet_id)
+        pool.header, self.bullet_style = H.ensure_bullet_style(
+            pool.header, self.bullet_para, pool.char(H.BODY_TEXT_HEIGHT, False))
 
     def _id(self) -> int:
         self.next_id += 1
@@ -378,8 +386,29 @@ class Emitter:
     def body(self, text: str) -> str:
         return self.para(text, self.pool.base_para, self.pool.char(H.BODY_TEXT_HEIGHT, False), H.BODY_TEXT_HEIGHT)
 
+    def bullet_item(self, text: str) -> str:
+        """글머리표 문단. 기호는 한/글이 그리고 글에는 넣지 않는다.
+
+        첫 줄·후속 줄 모두 본문 시작(BODY_LIST_TEXT_START)에서 접고, 첫 줄 캐시에
+        머리 표시 비트를 넣어 한/글이 기호를 그리게 한다.
+        """
+        para = self.para(
+            text.lstrip(),
+            self.bullet_para,
+            self.pool.char(H.BODY_TEXT_HEIGHT, False),
+            H.BODY_TEXT_HEIGHT,
+            horzsize=self.text_width,
+            style=self.bullet_style,
+            first_horzpos=H.BODY_LIST_TEXT_START,
+            following_horzpos=H.BODY_LIST_TEXT_START,
+        )
+        return para.replace(f'flags="{H.LINESEG_FLAGS}"',
+                            f'flags="{H.LINESEG_FLAGS | H.LINESEG_HEAD_FLAG}"', 1)
+
     def item(self, level: int, text: str, prefix: str = "• ") -> str:
         del level  # 경량 기본 목록은 한 단계이며 문단 hanging indent로 정렬한다.
+        if prefix == "• ":
+            return self.bullet_item(text)
         left, intent = L.list_margins(prefix, self.regular, self.boldfont)
         text = prefix + text.lstrip()
         return self.para(
@@ -812,9 +841,9 @@ def build(
         previous_kind = block[0]
     log.append(f"본문·목록·표 뒤 수준 2~3 제목 윗간격 {H.HEADING_TOP_SPACING} HWPUNIT 적용")
     log.append(
-        "본문 목록 hanging indent 적용: "
-        f"왼쪽 {H.BODY_LIST_LEFT_INDENT}, 첫 줄 {H.BODY_LIST_FIRST_LINE_INDENT}, "
-        f"글머리표 위치 {H.BODY_LIST_BULLET_POSITION} HWPUNIT"
+        f"본문 글머리표: 한/글 글머리표 기능({H.BODY_LIST_BULLET_STYLE} 스타일), "
+        f"기호 위치 {H.BODY_LIST_BULLET_POSITION}, 본문 시작 {H.BODY_LIST_TEXT_START} HWPUNIT; "
+        "번호 목록은 번호 보존 hanging indent"
     )
 
     section = fill_cover(section, header, cover, log)

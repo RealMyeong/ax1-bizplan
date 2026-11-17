@@ -40,11 +40,28 @@ CAPTION_RE = re.compile(r'^\[(표|그림) ([1-9]\d*)-([1-9]\d*)\]\s+(.+)$')
 TABLE_AXIS_HORIZONTAL_ALIGN = "CENTER"
 TABLE_AXIS_VERTICAL_ALIGN = "CENTER"
 TABLE_BODY_HORIZONTAL_ALIGN = "LEFT"
-# 목록은 텍스트 앞 공백 대신 문단 왼쪽 들여쓰기와 첫 줄 내어쓰기를 사용한다.
-# 10pt 맑은 고딕의 "• " 폭(약 769 HWPUNIT)에 맞춘 안정적인 반올림 값이다.
-BODY_LIST_LEFT_INDENT = 4000
-BODY_LIST_FIRST_LINE_INDENT = -800
-BODY_LIST_BULLET_POSITION = BODY_LIST_LEFT_INDENT + BODY_LIST_FIRST_LINE_INDENT
+# 목록 머리(글머리표 기호·번호)는 텍스트 앞 공백 없이 이 위치에서 시작한다.
+BODY_LIST_BULLET_POSITION = 3200
+# 한/글 글머리표(paraHead textOffset 50%, 맑은 고딕 10pt)가 그리는 기호 시작~본문 시작 거리.
+# 한/글 PDF 로 잰 값이다 (2026-11-17). 첫 줄·후속 줄 본문이 모두 이 위치에서 시작한다.
+BODY_LIST_BULLET_TEXT_OFFSET = 1500
+BODY_LIST_TEXT_START = BODY_LIST_BULLET_POSITION + BODY_LIST_BULLET_TEXT_OFFSET
+# 본문 글머리표는 글자로 치지 않고 한/글 글머리표 기능(hh:bullet)으로 만든다.
+# 한/글이 문단 왼쪽 여백(BODY_LIST_BULLET_POSITION)에 기호를 그리고 자동 내어쓰기로
+# 첫 줄 본문과 후속 줄을 기호 뒤 같은 위치에 맞춘다. 문단은 「글머리표 1」 스타일로 F6 에서 고를 수 있다.
+BODY_LIST_BULLET_CHAR = "•"
+BODY_LIST_BULLET_STYLE = "글머리표 1"
+BULLET_PARAHEAD = (
+    '<hh:paraHead level="0" align="LEFT" useInstWidth="0" autoIndent="1" widthAdjust="0"'
+    ' textOffsetType="PERCENT" textOffset="50" numFormat="DIGIT"'
+    ' charPrIDRef="4294967295" checkable="0"/>'
+)
+# 줄 배치 캐시 flags. 한/글은 글머리표·번호 문단 첫 줄 캐시에 머리 표시 비트(0x200000)가
+# 없으면 기호를 그리지 않는다 (한/글 저장본은 2490368 = 393216 | 0x200000).
+LINESEG_FLAGS = 393216
+LINESEG_HEAD_FLAG = 0x200000
+# 생성 본문에서 글자로 친 글머리표. 한/글 글머리표 문단에 이 기호가 또 있으면 두 번 보인다.
+TEXT_BULLET_RE = re.compile(r"^[•●◦▪‣] ")
 # 줄바꿈 계산 여유. 한/글의 줄나눔을 정확히 재현할 수 없으므로 조금 좁게 잡아
 # 줄 수를 적게 세지 않도록 한다. 적게 세면 그만큼 글자가 겹친다.
 WRAP_SAFETY = 0.97
@@ -629,7 +646,9 @@ def parse_para_prs(header: str) -> dict:
         intent = re.search(r'<hc:intent value="(-?\d+)"', body)
         prev = re.search(r'<hc:prev value="(-?\d+)"', body)
         next_ = re.search(r'<hc:next value="(-?\d+)"', body)
+        heading = re.search(r'<hh:heading type="(\w+)" idRef="(\d+)"', body)
         out[m.group(1)] = {
+            "heading": (heading.group(1), heading.group(2)) if heading else ("NONE", "0"),
             "spacing": int(ls.group(1)) if ls else None,
             "align": al.group(1) if al else None,
             "left": int(left.group(1)) if left else None,
@@ -638,6 +657,67 @@ def parse_para_prs(header: str) -> dict:
             "next": int(next_.group(1)) if next_ else None,
         }
     return out
+
+
+def bullet_chars(header: str) -> dict:
+    """hh:bullet id -> 기호."""
+    return {bid: unescape(ch) for bid, ch in re.findall(r'<hh:bullet id="(\d+)" char="([^"]*)"', header)}
+
+
+def bullet_para_ids(header: str) -> set:
+    """글머리표 머리(heading type="BULLET")를 쓰는 문단모양 id."""
+    return {pid for pid, props in parse_para_prs(header).items() if props["heading"][0] == "BULLET"}
+
+
+def ensure_body_bullet(header: str):
+    """본문 글머리표 기호(BODY_LIST_BULLET_CHAR)의 hh:bullet 정의를 확보한다. (header, bullet id)
+
+    같은 기호의 정의가 있으면 재사용한다. 승인 템플릿에는 bullets 목록이 없으므로
+    numberings 바로 뒤(문단모양 앞)에 새로 만든다.
+    """
+    for bid, ch in bullet_chars(header).items():
+        if ch == BODY_LIST_BULLET_CHAR:
+            return header, bid
+    ids = [int(b) for b in re.findall(r'<hh:bullet id="(\d+)"', header)]
+    bid = str(max(ids, default=0) + 1)
+    item = f'<hh:bullet id="{bid}" char="{BODY_LIST_BULLET_CHAR}" useImage="0">{BULLET_PARAHEAD}</hh:bullet>'
+    m = re.search(r'<hh:bullets itemCnt="(\d+)">', header)
+    if m:
+        header = header.replace(m.group(0), f'<hh:bullets itemCnt="{int(m.group(1)) + 1}">', 1)
+        return header.replace("</hh:bullets>", item + "</hh:bullets>", 1), bid
+    block = f'<hh:bullets itemCnt="1">{item}</hh:bullets>'
+    if "</hh:numberings>" in header:
+        return header.replace("</hh:numberings>", "</hh:numberings>" + block, 1), bid
+    i = header.index("<hh:paraProperties")
+    return header[:i] + block + header[i:], bid
+
+
+def set_para_heading(block: str, kind: str, id_ref: str, level: int = 0) -> str:
+    """문단모양 블록의 머리(heading)를 바꾼다. kind = NONE / BULLET / NUMBER / OUTLINE."""
+    return re.sub(r'<hh:heading type="\w+" idRef="\d+" level="\d+"\s*/>',
+                  f'<hh:heading type="{kind}" idRef="{id_ref}" level="{level}"/>', block, count=1)
+
+
+def ensure_bullet_style(header: str, para_id: str, char_id: str):
+    """「글머리표 1」 문단 스타일을 확보한다. (header, style id)
+
+    이미 있으면 그 스타일이 이번 글머리표 문단모양·글자모양을 가리키게 고친다.
+    """
+    name = BODY_LIST_BULLET_STYLE
+    m = re.search(rf'<hh:style id="(\d+)" type="PARA" name="{re.escape(name)}"[^>]*/>', header)
+    if m:
+        old = m.group(0)
+        new = re.sub(r'paraPrIDRef="\d+"', f'paraPrIDRef="{para_id}"', old, count=1)
+        new = re.sub(r'charPrIDRef="\d+"', f'charPrIDRef="{char_id}"', new, count=1)
+        return header.replace(old, new, 1), m.group(1)
+    ids = [int(i) for i in re.findall(r'<hh:style id="(\d+)"', header)]
+    sid = str(max(ids, default=-1) + 1)
+    block = (f'<hh:style id="{sid}" type="PARA" name="{name}" engName="Bullet 1"'
+             f' paraPrIDRef="{para_id}" charPrIDRef="{char_id}" nextStyleIDRef="{sid}"'
+             f' langID="1042" lockForm="0"/>')
+    mc = re.search(r'<hh:styles itemCnt="(\d+)">', header)
+    header = header.replace(mc.group(0), f'<hh:styles itemCnt="{int(mc.group(1)) + 1}">', 1)
+    return header.replace("</hh:styles>", block + "</hh:styles>", 1), sid
 
 
 def style_ids_by_name(header: str) -> dict:

@@ -177,20 +177,14 @@ def check(path: Path) -> list:
         if width_match
         else 42520
     )
-    bullet_prefix_width = None
+    bullet_paras = H.bullet_para_ids(header)
+    bullet_chars = H.bullet_chars(header)
+    style_names = {sid: name for name, sid in heading_styles.items()}
     first_heading_style = heading_styles.get('개요 1')
     in_main_body = not any(
         L.attr(para, 'styleIDRef') == first_heading_style
         for off, _, para in L.top_paragraphs(section) if off >= body_start
     )
-    if not regular.portable:
-        bullet_prefix_width, _ = H.text_width(
-            "• ",
-            H.BODY_TEXT_HEIGHT,
-            False,
-            regular,
-            boldfont,
-        )
     for offset, attrs, body in H.paragraphs(section):
         if offset < body_start or H.in_any_span(spans, offset):
             continue
@@ -249,7 +243,51 @@ def check(path: Path) -> list:
             )
             continue
 
-        list_prefix = H.re.match(r'^(• |\d+\.\s+)', stripped) if in_main_body else None
+        if in_main_body and pid in bullet_paras:
+            # 한/글 글머리표 기능 문단: 기호는 header 정의가 그리고 글에는 없어야 한다.
+            props = para_prs.get(pid, {})
+            bullet_ref = props.get("heading", ("NONE", "0"))[1]
+            if bullet_chars.get(bullet_ref) != H.BODY_LIST_BULLET_CHAR:
+                add("본문 목록 글머리표",
+                    f"글머리표 기호가 {bullet_chars.get(bullet_ref)!r} (규칙 {H.BODY_LIST_BULLET_CHAR!r}) :: {text[:34]!r}")
+            got_style = H.re.search(r'styleIDRef="(\d+)"', attrs)
+            if not got_style or style_names.get(got_style.group(1)) != H.BODY_LIST_BULLET_STYLE:
+                add("본문 목록 글머리표",
+                    f"스타일이 「{H.BODY_LIST_BULLET_STYLE}」이 아님 (F6 에서 고를 수 없음) :: {text[:34]!r}")
+            if H.TEXT_BULLET_RE.match(stripped):
+                add("본문 목록 글머리표", f"글에 기호가 또 들어 있어 두 번 보임 :: {text[:34]!r}")
+            if text != stripped:
+                add("본문 목록 들여쓰기", f"글머리표 문단 앞에 일반 공백이 남아 들여쓰기와 중복됨 :: {text[:34]!r}")
+            if props.get("left") != H.BODY_LIST_BULLET_POSITION or props.get("intent") != 0:
+                add("본문 목록 들여쓰기",
+                    f"문단모양 {pid}의 왼쪽·첫 줄 값이 {props.get('left')}·{props.get('intent')} "
+                    f"(규칙 {H.BODY_LIST_BULLET_POSITION}·0, 내어쓰기는 한/글 자동 내어쓰기)")
+            segs = [
+                (int(m.group(1)), int(m.group(2)), int(m.group(3)))
+                for m in H.re.finditer(
+                    r'<hp:lineseg [^>]*horzpos="(-?\d+)"[^>]*horzsize="(\d+)"[^>]*flags="(\d+)"', body)
+            ]
+            if not segs:
+                add("본문 목록 줄 배치", f"lineseg 캐시가 없음 :: {text[:34]!r}")
+            elif not segs[0][2] & H.LINESEG_HEAD_FLAG:
+                add("본문 목록 줄 배치",
+                    f"첫 줄 캐시에 머리 표시(0x200000)가 없어 한/글이 기호를 그리지 않음 :: {text[:34]!r}")
+            for line_index, (horzpos, horzsize, _) in enumerate(segs):
+                expected_size = text_width - H.BODY_LIST_TEXT_START
+                if horzpos != H.BODY_LIST_TEXT_START or horzsize != expected_size:
+                    add("본문 목록 줄 배치",
+                        f"{line_index + 1}줄 horzpos·horzsize가 {horzpos}·{horzsize} "
+                        f"(규칙 {H.BODY_LIST_TEXT_START}·{expected_size}) :: {text[:34]!r}")
+            top_level.append({"kind": "list", "level": None, "pid": pid, "attrs": attrs, "text": text})
+            continue
+
+        if in_main_body and H.TEXT_BULLET_RE.match(stripped):
+            add("본문 목록 글머리표",
+                f"글머리표를 글자로 침. 한/글 글머리표 기능(「{H.BODY_LIST_BULLET_STYLE}」)이어야 함 :: {text[:34]!r}")
+            top_level.append({"kind": "list", "level": None, "pid": pid, "attrs": attrs, "text": text})
+            continue
+
+        list_prefix = H.re.match(r'^(\d+\.\s+)', stripped) if in_main_body else None
         if list_prefix:
             prefix = list_prefix.group(1)
             expected_left, expected_intent = L.list_margins(prefix, regular, boldfont)
@@ -269,14 +307,8 @@ def check(path: Path) -> list:
                     f"{props.get('left')}·{props.get('intent')} (규칙 "
                     f"{expected_left}·{expected_intent})",
                 )
-            if H.BODY_LIST_BULLET_POSITION != (
-                H.BODY_LIST_LEFT_INDENT + H.BODY_LIST_FIRST_LINE_INDENT
-            ):
-                add("본문 목록 들여쓰기", "글머리표 위치와 문단 hanging indent 상수의 관계가 일치하지 않음")
-            if prefix == '• ' and bullet_prefix_width is not None and abs(
-                H.BODY_LIST_BULLET_POSITION + bullet_prefix_width - H.BODY_LIST_LEFT_INDENT
-            ) > 100:
-                add("본문 목록 들여쓰기", "글머리표 폭과 후속 줄 본문 시작 위치가 1 HWPUNIT 기준값을 초과함")
+            if expected_left + expected_intent != H.BODY_LIST_BULLET_POSITION:
+                add("본문 목록 들여쓰기", "번호 위치와 문단 hanging indent 값의 관계가 일치하지 않음")
             line_segs = [
                 (int(match.group(1)), int(match.group(2)), int(match.group(3)))
                 for match in H.re.finditer(

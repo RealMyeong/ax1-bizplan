@@ -52,8 +52,7 @@ def page_body_height(section: str) -> int:
 
 
 def list_margins(prefix: str, regular: H.Font, boldfont: H.Font):
-    if prefix == '• ':
-        return H.BODY_LIST_LEFT_INDENT, H.BODY_LIST_FIRST_LINE_INDENT
+    # 번호 목록 전용. 글머리표는 한/글 글머리표 기능(자동 내어쓰기)이 맡는다.
     width, _ = H.text_width(prefix, H.BODY_TEXT_HEIGHT, False, regular, boldfont)
     width = math.ceil(width)
     return H.BODY_LIST_BULLET_POSITION + width, -width
@@ -111,7 +110,7 @@ def reflow_table(tbl: str, char_prs: dict, regular: H.Font, boldfont: H.Font) ->
     return re.sub(r'<hp:sz\b[^>]*/>', lambda m: set_attr(m[0], 'height', sum(row_heights)), tbl, count=1)
 
 
-def describe(para: str, heading_styles: dict):
+def describe(para: str, heading_styles: dict, bullet_paras: frozenset = frozenset()):
     if '<hp:tbl ' in para:
         return 'table', None
     if '<hp:pic ' in para:
@@ -122,6 +121,8 @@ def describe(para: str, heading_styles: dict):
     text = H.unescape(''.join(re.findall(r'<hp:t>([^<]*)</hp:t>', para)))
     if H.CAPTION_RE.fullmatch(text):
         return 'caption', None
+    if attr(para, 'paraPrIDRef') in bullet_paras:  # 한/글 글머리표 문단 (기호는 글에 없음)
+        return 'list', None
     return ('list' if re.match(r'^(?:• |\d+\.\s)', text.lstrip()) else 'body'), None
 
 
@@ -131,11 +132,12 @@ def layout_plan(section: str, header: str):
         raise H.HeadlessHwpxError('본문 경계 누락')
     height = page_body_height(section)
     styles = H.style_ids_by_name(header)
+    bullet_paras = frozenset(H.bullet_para_ids(header))
     plan = []
     for start, end, para in top_paragraphs(section):
         if start < boundary:
             continue
-        kind, level = describe(para, styles)
+        kind, level = describe(para, styles, bullet_paras)
         table = re.search(r'<hp:tbl\b.*?</hp:tbl>', para, re.S)
         size = re.search(r'<hp:sz\b[^>]*/>', table[0]) if table else None
         table_h = int(attr(size[0], 'height')) if size else 0

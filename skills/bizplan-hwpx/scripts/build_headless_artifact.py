@@ -285,6 +285,29 @@ class StylePool:
         self.new_paras.append(block)
         return new_id
 
+    def aligned_copy(self, para_id: str, align: str) -> str:
+        """Clone one existing paragraph style with a different horizontal alignment.
+
+        The approved cover shares paragraph styles across many protected cells,
+        so the shared definition itself is never edited.
+        """
+        block = self.paras[para_id]
+        block = re.sub(
+            r'(<hh:align horizontal=")\w+(")',
+            lambda match: match.group(1) + align + match.group(2),
+            block,
+            count=1,
+        )
+        want = self._strip(block, "paraPr")
+        for pid, existing in self.paras.items():
+            if self._strip(existing, "paraPr") == want:
+                return pid
+        new_id = str(max(int(i) for i in self.paras) + 1)
+        block = re.sub(r'^<hh:paraPr id="\d+"', f'<hh:paraPr id="{new_id}"', block)
+        self.paras[new_id] = block
+        self.new_paras.append(block)
+        return new_id
+
     def para_indent(self, left: int) -> str:
         return self.para_format(left=left)
 
@@ -821,8 +844,19 @@ def build(
     def metadata_layout(paragraph):
         return relayout_paragraph(paragraph, H.parse_char_prs(header), regular, boldfont)
     section = M.fill_people(section, people, metadata_layout)
+    para_aligns = {pid: info["align"] for pid, info in H.parse_para_prs(header).items()}
+
+    def history_layout(paragraph):
+        # 양쪽 정렬 칸에 긴 개정내역이 접히면 글자가 벌어진다. 기록한 칸의 문단만
+        # 왼쪽 정렬 복제본에 연결한다 (공유 정의·표 구조·열 너비는 그대로).
+        found = re.search(r'paraPrIDRef="(\d+)"', paragraph)
+        if found and para_aligns.get(found.group(1)) == "JUSTIFY":
+            left_id = pool.aligned_copy(found.group(1), "LEFT")
+            paragraph = paragraph.replace(found.group(0), f'paraPrIDRef="{left_id}"', 1)
+        return metadata_layout(paragraph)
+
     section = M.fill_history(section, prior_records, artifact_version, revision_date,
-                             revision_note, revision_author, metadata_layout)
+                             revision_note, revision_author, history_layout)
     log.append(f'기존 이력 {len(prior_records)}행 보존 + 새 개정 1행; 문서 정보 {len(people)}개 역할 반영')
     try:
         preview = H.get_text(entries, H.PREVIEW)
